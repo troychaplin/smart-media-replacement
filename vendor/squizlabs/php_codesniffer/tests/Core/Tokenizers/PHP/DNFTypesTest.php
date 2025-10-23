@@ -7,7 +7,7 @@
  * @license   https://github.com/PHPCSStandards/PHP_CodeSniffer/blob/master/licence.txt BSD Licence
  */
 
-namespace PHP_CodeSniffer\Tests\Core\Tokenizers\PHP;
+namespace PHP_CodeSniffer\Tests\Core\Tokenizers.HP;
 
 use PHP_CodeSniffer\Tests\Core\Tokenizers\AbstractTokenizerTestCase;
 use PHP_CodeSniffer\Util\Tokens;
@@ -462,6 +462,13 @@ final class DNFTypesTest extends AbstractTokenizerTestCase
             'OO property type: asymmetric vis, public protected(set)'     => [
                 'testMarker'  => '/* testDNFTypePropertyWithPublicProtectedSet */',
             ],
+            'OO property type: with only abstract keyword'                => [
+                'testMarker' => '/* testDNFTypeWithPHP84AbstractKeyword */',
+            ],
+            'OO property type: with abstract and public keyword'          => [
+                'testMarker' => '/* testDNFTypeWithPHP84AbstractKeywordAndPublic */',
+            ],
+
             'OO method param type: first param'                           => [
                 'testMarker' => '/* testDNFTypeParam1WithAttribute */',
             ],

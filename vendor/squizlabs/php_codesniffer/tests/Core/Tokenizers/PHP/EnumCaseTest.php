@@ -7,7 +7,7 @@
  * @license   https://github.com/PHPCSStandards/PHP_CodeSniffer/blob/master/licence.txt BSD Licence
  */
 
-namespace PHP_CodeSniffer\Tests\Core\Tokenizers\PHP;
+namespace PHP_CodeSniffer\Tests\Core\Tokenizers.HP;
 
 use PHP_CodeSniffer\Tests\Core\Tokenizers\AbstractTokenizerTestCase;
 
@@ -142,6 +142,7 @@ final class EnumCaseTest extends AbstractTokenizerTestCase
             '"false" as case name'     => ['/* testKeywordAsEnumCaseNameShouldBeString5 */'],
             '"default" as case name'   => ['/* testKeywordAsEnumCaseNameShouldBeString6 */'],
             '"array" as case name'     => ['/* testKeywordAsEnumCaseNameShouldBeString7 */'],
+            '"exit" as case name'      => ['/* testKeywordAsEnumCaseNameShouldBeString8 */'],
         ];
 
     }//end dataKeywordAsEnumCaseNameShouldBeString()

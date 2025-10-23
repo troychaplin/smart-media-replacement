@@ -7,7 +7,7 @@
  * @license   https://github.com/PHPCSStandards/PHP_CodeSniffer/blob/master/licence.txt BSD Licence
  */
 
-namespace PHP_CodeSniffer\Tests\Core\Tokenizers\PHP;
+namespace PHP_CodeSniffer\Tests\Core\Tokenizers.HP;
 
 use PHP_CodeSniffer\Tests\Core\Tokenizers\AbstractTokenizerTestCase;
 use PHP_CodeSniffer\Util\Tokens;
@@ -448,6 +448,14 @@ final class ContextSensitiveKeywordsTest extends AbstractTokenizerTestCase
             'unset'                                  => [
                 'testMarker'        => '/* testUnsetIsKeyword */',
                 'expectedTokenType' => 'T_UNSET',
+            ],
+            '\\die: statement (fully qualified)'     => [
+                'testMarker'        => '/* testFullyQualifiedDieIsKeyword */',
+                'expectedTokenType' => 'T_EXIT',
+            ],
+            '\\exit: statement (fully qualified)'    => [
+                'testMarker'        => '/* testFullyQualifiedExitIsKeyword */',
+                'expectedTokenType' => 'T_EXIT',
             ],
 
             'include'                                => [

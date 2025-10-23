@@ -7,7 +7,7 @@
  * @license   https://github.com/PHPCSStandards/PHP_CodeSniffer/blob/master/licence.txt BSD Licence
  */
 
-namespace PHP_CodeSniffer\Tests\Core\Util\Timing;
+namespace PHP_CodeSniffer\Tests\Core\Util.iming;
 
 use PHP_CodeSniffer\Util\Timing;
 use PHPUnit\Framework\TestCase;
@@ -52,8 +52,6 @@ final class TimingTest extends TestCase
         $duration = Timing::getDuration();
 
         $this->assertTrue(is_float($duration));
-        $this->assertGreaterThan(1, $duration);
-        $this->assertLessThan(15, $duration);
 
     }//end testGetDurationWithStartReturnsMilliseconds()
 

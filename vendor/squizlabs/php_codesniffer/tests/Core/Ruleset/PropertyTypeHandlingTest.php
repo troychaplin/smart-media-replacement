@@ -7,7 +7,7 @@
  * @license   https://github.com/PHPCSStandards/PHP_CodeSniffer/blob/master/licence.txt BSD Licence
  */
 
-namespace PHP_CodeSniffer\Tests\Core\Ruleset;
+namespace PHP_CodeSniffer\Tests\Core.uleset;
 
 use PHP_CodeSniffer\Files\LocalFile;
 use PHP_CodeSniffer\Ruleset;
@@ -120,6 +120,7 @@ final class PropertyTypeHandlingTest extends TestCase
             'string',
             '10',
             '1.5',
+            '',
             'null',
             'true',
             'false',
@@ -128,6 +129,7 @@ final class PropertyTypeHandlingTest extends TestCase
             'string' => 'string',
             10       => '10',
             'float'  => '1.5',
+            11       => '',
             'null'   => 'null',
             'true'   => 'true',
             'false'  => 'false',

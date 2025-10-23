@@ -27,7 +27,7 @@
  * @see \PHP_CodeSniffer\Tests\Core\Fixer\FixFileReturnValueTest
  */
 
-namespace Fixtures\TestStandard\Sniffs\FixFileReturnValue;
+namespace Fixtures\TestStandard\Sniffs.ixFileReturnValue;
 
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;

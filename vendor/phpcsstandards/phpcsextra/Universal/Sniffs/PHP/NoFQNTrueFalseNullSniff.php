@@ -10,6 +10,7 @@
 
 namespace PHPCSExtra\Universal\Sniffs\PHP;
 
+use PHP_CodeSniffer\Config;
 use PHP_CodeSniffer\Files\File;
 use PHP_CodeSniffer\Sniffs\Sniff;
 use PHP_CodeSniffer\Util\Tokens;
@@ -31,15 +32,17 @@ final class NoFQNTrueFalseNullSniff implements Sniff
      */
     public function register()
     {
-        return [
-            // PHP < 8.0.
+        $targets =  [
             \T_TRUE,
             \T_FALSE,
             \T_NULL,
-
-            // PHP >= 8.0.
-            \T_STRING,
         ];
+
+        if (\version_compare(Config::VERSION, '4.0.0', '>=') === true) {
+            $targets[] = \T_NS_SEPARATOR;
+        }
+
+        return $targets;
     }
 
     /**
@@ -59,34 +62,55 @@ final class NoFQNTrueFalseNullSniff implements Sniff
         $content   = $tokens[$stackPtr]['content'];
         $contentLC = \strtolower($content);
 
-        if ($contentLC !== 'true' && $contentLC !== 'false' && $contentLC !== 'null') {
-            return;
-        }
+        if ($contentLC === '\true' || $contentLC === '\false' || $contentLC === '\null') {
+            // PHPCS 4.x.
+        } elseif ($tokens[$stackPtr]['code'] === \T_NS_SEPARATOR) {
+            // PHPCS 4.x for code which is a parse error on PHP 8.0+.
+            $next = $phpcsFile->findNext(Tokens::$emptyTokens, ($stackPtr + 1), null, true);
+            if ($tokens[$next]['code'] !== \T_STRING) {
+                return;
+            }
 
-        $prev = $phpcsFile->findPrevious(Tokens::$emptyTokens, ($stackPtr - 1), null, true);
-        if ($tokens[$prev]['code'] !== \T_NS_SEPARATOR) {
-            return;
-        }
+            $nextContentLC = \strtolower($tokens[$next]['content']);
+            if ($nextContentLC !== 'true' && $nextContentLC !== 'false' && $nextContentLC !== 'null') {
+                return;
+            }
+        } else {
+            // PHPCS 3.x.
+            $prev = $phpcsFile->findPrevious(Tokens::$emptyTokens, ($stackPtr - 1), null, true);
+            if ($tokens[$prev]['code'] !== \T_NS_SEPARATOR) {
+                return;
+            }
 
-        $prevPrev = $phpcsFile->findPrevious(Tokens::$emptyTokens, ($prev - 1), null, true);
-        if ($tokens[$prevPrev]['code'] === \T_STRING || $tokens[$prevPrev]['code'] === \T_NAMESPACE) {
-            return;
-        }
+            $prevPrev = $phpcsFile->findPrevious(Tokens::$emptyTokens, ($prev - 1), null, true);
+            if ($tokens[$prevPrev]['code'] === \T_STRING || $tokens[$prevPrev]['code'] === \T_NAMESPACE) {
+                return;
+            }
 
-        $next = $phpcsFile->findNext(Tokens::$emptyTokens, ($stackPtr + 1), null, true);
-        if ($tokens[$next]['code'] === \T_NS_SEPARATOR) {
-            return;
+            $next = $phpcsFile->findNext(Tokens::$emptyTokens, ($stackPtr + 1), null, true);
+            if ($tokens[$next]['code'] === \T_NS_SEPARATOR) {
+                return;
+            }
         }
 
         $fix = $phpcsFile->addFixableError(
             'The special PHP constant "%s" should not be fully qualified.',
-            $prev,
+            $stackPtr,
             'Found',
             [$contentLC]
         );
 
         if ($fix === true) {
-            $phpcsFile->fixer->replaceToken($prev, '');
+            if ($contentLC === '\true' || $contentLC === '\false' || $contentLC === '\null') {
+                // PHPCS 4.x.
+                $phpcsFile->fixer->replaceToken($stackPtr, \ltrim($tokens[$stackPtr]['content'], '\\'));
+            } elseif ($tokens[$stackPtr]['code'] === \T_NS_SEPARATOR) {
+                // PHPCS 4.x for code which is a parse error on PHP 8.0+.
+                $phpcsFile->fixer->replaceToken($stackPtr, '');
+            } else {
+                // PHPCS 3.x.
+                $phpcsFile->fixer->replaceToken($prev, '');
+            }
         }
     }
 }
