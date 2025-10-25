@@ -1,5 +1,5 @@
 === Replace Media ===
-Contributors:      troychaplin
+Contributors:      areziaal
 Tags:              media, replace, upload, attachment, pdf
 Requires at least: 6.6
 Tested up to:      6.9
@@ -94,11 +94,11 @@ Yes, developers can use the `replace_media_enforce_dimensions` filter to disable
 == Screenshots ==
 
 1. Replace File button in the Media Library attachment details
-2. File selection dialog for choosing replacement media
+2. Repalce file from the list of media library items
 
 == Changelog ==
 
-= 0.1.0 =
+= 1.0.0 =
 * Initial release
 * Replace media files while maintaining URLs
 * Filename validation to prevent URL changes
@@ -107,52 +107,3 @@ Yes, developers can use the `replace_media_enforce_dimensions` filter to disable
 * File type validation for consistency
 * AJAX-based replacement with error handling
 * Developer hooks for customization
-
-== Developer Hooks ==
-
-= Filters =
-
-**replace_media_enforce_dimensions**
-
-Allows you to disable or customize dimension enforcement for specific attachments.
-
-Parameters:
-* `$enforce` (bool) - Whether to enforce dimensions. Default true.
-* `$attachment_id` (int) - The attachment ID being replaced.
-
-Example:
-`
-add_filter( 'replace_media_enforce_dimensions', function( $enforce, $attachment_id ) {
-    // Allow flexible dimensions for attachment ID 123
-    if ( $attachment_id === 123 ) {
-        return false;
-    }
-    return $enforce;
-}, 10, 2 );
-`
-
-= Actions =
-
-**replace_media_file_replaced**
-
-Fires after a media file has been successfully replaced.
-
-Parameters:
-* `$attachment_id` (int) - The ID of the attachment that was replaced.
-* `$new_file_path` (string) - The full path to the new file.
-
-Example:
-`
-add_action( 'replace_media_file_replaced', function( $attachment_id, $new_file_path ) {
-    // Clear custom caches
-    wp_cache_delete( 'my_custom_cache_' . $attachment_id );
-    
-    // Log the replacement
-    error_log( "Media file replaced: {$attachment_id}" );
-}, 10, 2 );
-`
-
-== Upgrade Notice ==
-
-= 0.1.0 =
-Initial release of Replace Media plugin. Safely replace media files while maintaining all URLs and metadata.
