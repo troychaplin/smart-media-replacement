@@ -21,7 +21,7 @@ class ManageMedia {
 	public function __construct() {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 		add_action( 'wp_ajax_replace_media_file', array( $this, 'handle_media_replacement' ) );
-		add_filter( 'attachment_fields_to_edit', array( $this, 'add_replace_media_button' ), 10, 2 );
+		add_action( 'attachment_submitbox_misc_actions', array( $this, 'add_replace_media_button_to_submitbox' ), 20 );
 	}
 
 	/**
@@ -58,24 +58,18 @@ class ManageMedia {
 	}
 
 	/**
-	 * Add replace media button to attachment fields.
+	 * Add replace media button to attachment submit box.
 	 *
-	 * @param array    $form_fields Array of form fields.
-	 * @param \WP_Post $post        The attachment post object.
-	 * @return array Modified form fields.
+	 * @param \WP_Post $post The attachment post object.
 	 */
-	public function add_replace_media_button( $form_fields, $post ) {
-		$form_fields['replace_media'] = array(
-			'label' => __( 'Replace Media', 'replace-media' ),
-			'input' => 'html',
-			'html'  => sprintf(
-				'<button type="button" class="button replace-media-button" data-attachment-id="%d">%s</button>',
-				$post->ID,
-				__( 'Replace File', 'replace-media' )
-			),
-		);
-
-		return $form_fields;
+	public function add_replace_media_button_to_submitbox( $post ) {
+		?>
+		<div class="misc-pub-section misc-pub-replace-media">
+			<button type="button" class="button button-large replace-media-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+				<?php esc_html_e( 'Replace File', 'replace-media' ); ?>
+			</button>
+		</div>
+		<?php
 	}
 
 	/**
