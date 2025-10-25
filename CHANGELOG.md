@@ -16,3 +16,14 @@ Prefix the change with one of these keywords:
 - _Security_: in case of vulnerabilities.
 
 ## [Unreleased]
+
+## [1.0.0]
+
+- Initial release
+- Replace media files while maintaining URLs
+- Filename validation to prevent URL changes
+- Image dimension enforcement to prevent layout issues
+- WordPress scaled image handling
+- File type validation for consistency
+- AJAX-based replacement with error handling
+- Developer hooks for customization
