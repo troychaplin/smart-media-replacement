@@ -22,6 +22,7 @@ class ManageMedia {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 		add_action( 'wp_ajax_replace_media_file', array( $this, 'handle_media_replacement' ) );
 		add_action( 'attachment_submitbox_misc_actions', array( $this, 'add_replace_media_button_to_submitbox' ), 20 );
+		add_filter( 'media_row_actions', array( $this, 'add_replace_media_row_action' ), 10, 2 );
 	}
 
 	/**
@@ -70,6 +71,24 @@ class ManageMedia {
 			</button>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Add replace media link to row actions in Media Library list view.
+	 *
+	 * @param array    $actions An array of action links for each attachment.
+	 * @param \WP_Post $post    The attachment post object.
+	 * @return array Modified actions array.
+	 */
+	public function add_replace_media_row_action( $actions, $post ) {
+		if ( current_user_can( 'edit_post', $post->ID ) ) {
+			$actions['replace_media'] = sprintf(
+				'<a href="#" class="replace-media-link replace-media-button" data-attachment-id="%d">%s</a>',
+				$post->ID,
+				__( 'Replace', 'replace-media' )
+			);
+		}
+		return $actions;
 	}
 
 	/**
