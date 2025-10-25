@@ -240,8 +240,12 @@ class ManageMedia {
 			// Move the uploaded file to the correct location with the original filename.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			// Move the uploaded file to the target location.
-			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
+			// Move the uploaded file to the target location using WordPress Filesystem API.
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			WP_Filesystem();
+			global $wp_filesystem;
+
+			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'replace-media' ) );
 			}
 
