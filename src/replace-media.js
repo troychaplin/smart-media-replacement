@@ -1,11 +1,8 @@
 /**
- * Block Editor Script Functionality
+ * Media Library Replacement Functionality
  *
- * The following scripts are compiled into a single asset and loaded into the block editor.
- *
+ * Handles the file replacement functionality in the WordPress Media Library.
  */
-
-// import './scripts/block-styles';
 
 /**
  * WordPress dependencies
@@ -142,15 +139,19 @@ document.addEventListener('DOMContentLoaded', function () {
 	// Initialize buttons on page load
 	initReplaceButtons();
 
-	// Initialize buttons when media modal is opened
-	if (wp.media && wp.media.frame) {
-		wp.media.frame.on('open', initReplaceButtons);
-	}
-
-	// Initialize buttons when attachment details are shown
-	document.addEventListener('click', function (e) {
-		if (e.target && e.target.classList.contains('attachment-details')) {
-			initReplaceButtons();
+	// Re-initialize buttons when attachment details are shown in the media modal
+	// This handles the modal opening and attachment detail views
+	if (typeof wp !== 'undefined' && wp.media) {
+		const originalMediaView = wp.media.view.Attachment.Details;
+		if (originalMediaView) {
+			wp.media.view.Attachment.Details = originalMediaView.extend({
+				render() {
+					originalMediaView.prototype.render.apply(this, arguments);
+					// Re-initialize buttons after the view renders
+					setTimeout(initReplaceButtons, 100);
+					return this;
+				},
+			});
 		}
-	});
+	}
 });

@@ -21,7 +21,8 @@ class ManageMedia {
 	public function __construct() {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 		add_action( 'wp_ajax_replace_media_file', array( $this, 'handle_media_replacement' ) );
-		add_filter( 'attachment_fields_to_edit', array( $this, 'add_replace_media_button' ), 10, 2 );
+		add_action( 'attachment_submitbox_misc_actions', array( $this, 'add_replace_media_button_to_submitbox' ), 20 );
+		add_filter( 'media_row_actions', array( $this, 'add_replace_media_row_action' ), 10, 2 );
 	}
 
 	/**
@@ -37,8 +38,8 @@ class ManageMedia {
 			return;
 		}
 
-		// Register the script first.
-		wp_register_script(
+		// Enqueue the script.
+		wp_enqueue_script(
 			'replace-media-script',
 			REPLACE_MEDIA_URL . 'build/replace-media.js',
 			array( 'jquery', 'wp-i18n', 'media-views' ),
@@ -46,65 +47,66 @@ class ManageMedia {
 			true
 		);
 
-		// Set the localized data.
-		$localized_data = array(
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'replace_media_nonce' ),
-		);
-
-		// Localize the script.
+		// Localize the script with necessary data.
 		wp_localize_script(
 			'replace-media-script',
 			'replaceMediaData',
-			$localized_data
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'replace_media_nonce' ),
+			)
 		);
-
-		// Enqueue the script after localization.
-		wp_enqueue_script( 'replace-media-script' );
 	}
 
 	/**
-	 * Add replace media button to attachment fields.
+	 * Add replace media button to attachment submit box.
 	 *
-	 * @param array    $form_fields Array of form fields.
-	 * @param \WP_Post $post        The attachment post object.
-	 * @return array Modified form fields.
+	 * @param \WP_Post $post The attachment post object.
 	 */
-	public function add_replace_media_button( $form_fields, $post ) {
-		$form_fields['replace_media'] = array(
-			'label' => __( 'Replace Media', 'replace-media' ),
-			'input' => 'html',
-			'html'  => sprintf(
-				'<button type="button" class="button replace-media-button" data-attachment-id="%d">%s</button>',
-				$post->ID,
-				__( 'Replace File', 'replace-media' )
-			),
-		);
+	public function add_replace_media_button_to_submitbox( $post ) {
+		?>
+		<div class="misc-pub-section misc-pub-replace-media">
+			<button type="button" class="button button-large replace-media-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+				<?php esc_html_e( 'Replace File', 'replace-media' ); ?>
+			</button>
+		</div>
+		<?php
+	}
 
-		return $form_fields;
+	/**
+	 * Add replace media link to row actions in Media Library list view.
+	 *
+	 * @param array    $actions An array of action links for each attachment.
+	 * @param \WP_Post $post    The attachment post object.
+	 * @return array Modified actions array.
+	 */
+	public function add_replace_media_row_action( $actions, $post ) {
+		if ( current_user_can( 'edit_post', $post->ID ) ) {
+			$actions['replace_media'] = sprintf(
+				'<a href="#" class="replace-media-link replace-media-button" data-attachment-id="%d">%s</a>',
+				$post->ID,
+				__( 'Replace', 'replace-media' )
+			);
+		}
+		return $actions;
 	}
 
 	/**
 	 * Handle the media replacement AJAX request.
 	 */
 	public function handle_media_replacement() {
-		// Enable error reporting for debugging.
-		if ( ! defined( 'WP_DEBUG_DISPLAY' ) ) {
-			define( 'WP_DEBUG_DISPLAY', true );
-		}
-
 		// Verify nonce.
 		if ( ! check_ajax_referer( 'replace_media_nonce', 'nonce', false ) ) {
 			wp_send_json_error( __( 'Security check failed.', 'replace-media' ) );
 		}
 
-		if ( ! current_user_can( 'upload_files' ) ) {
-			wp_send_json_error( __( 'You do not have permission to replace media files.', 'replace-media' ) );
-		}
-
 		$attachment_id = isset( $_POST['attachment_id'] ) ? intval( $_POST['attachment_id'] ) : 0;
 		if ( ! $attachment_id ) {
 			wp_send_json_error( __( 'Invalid attachment ID.', 'replace-media' ) );
+		}
+
+		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+			wp_send_json_error( __( 'You do not have permission to edit this attachment.', 'replace-media' ) );
 		}
 
 		if ( ! isset( $_FILES['replacement_file'] ) ) {
@@ -144,14 +146,7 @@ class ManageMedia {
 		$attachment = \get_post( $attachment_id );
 
 		if ( ! $attachment ) {
-			$this->logger->debug( 'Attachment not found.' );
 			wp_send_json_error( __( 'Attachment not found.', 'replace-media' ) );
-		}
-
-		// Get the current file path.
-		$current_file = get_attached_file( $attachment_id );
-		if ( ! $current_file ) {
-			wp_send_json_error( __( 'Current file not found.', 'replace-media' ) );
 		}
 
 		// Handle the file upload.
@@ -192,6 +187,20 @@ class ManageMedia {
 				}
 			}
 
+			// Validate MIME type matches.
+			$current_mime = get_post_mime_type( $attachment_id );
+			$new_mime     = wp_check_filetype( $file['name'] );
+			if ( $current_mime !== $new_mime['type'] ) {
+				wp_send_json_error(
+					sprintf(
+						/* translators: 1: required mime type, 2: uploaded mime type */
+						__( 'File type mismatch. Required: %1$s, Uploaded: %2$s', 'replace-media' ),
+						$current_mime,
+						$new_mime['type']
+					)
+				);
+			}
+
 			// Validate dimensions for images.
 			$current_image_info = getimagesize( $current_file );
 			if ( $current_image_info ) {
@@ -224,7 +233,9 @@ class ManageMedia {
 				}
 
 				// Enforce strict dimension matching for all images to prevent layout issues.
-				if ( $new_width !== $comparison_width || $new_height !== $comparison_height ) {
+				$enforce_dimensions = apply_filters( 'replace_media_enforce_dimensions', true, $attachment_id );
+
+				if ( $enforce_dimensions && ( $new_width !== $comparison_width || $new_height !== $comparison_height ) ) {
 					wp_send_json_error(
 						sprintf(
 							/* translators: 1: required dimensions, 2: uploaded dimensions */
@@ -242,8 +253,12 @@ class ManageMedia {
 			// Move the uploaded file to the correct location with the original filename.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			// Move the uploaded file to the target location.
-			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
+			// Move the uploaded file to the target location using WordPress Filesystem API.
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			WP_Filesystem();
+			global $wp_filesystem;
+
+			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'replace-media' ) );
 			}
 
@@ -271,8 +286,8 @@ class ManageMedia {
 			// Update the attachment's file path in the database.
 			update_attached_file( $attachment_id, $final_file_path );
 
-			// Verify what was actually saved.
-			$saved_file_path = get_attached_file( $attachment_id );
+			// Allow developers to hook into the replacement process.
+			do_action( 'replace_media_file_replaced', $attachment_id, $final_file_path );
 
 			wp_send_json_success(
 				array(
@@ -280,7 +295,7 @@ class ManageMedia {
 					'url'     => wp_get_attachment_url( $attachment_id ),
 				)
 			);
-		} catch ( Exception $e ) {
+		} catch ( \Exception $e ) {
 			wp_send_json_error( $e->getMessage() );
 		}
 	}
