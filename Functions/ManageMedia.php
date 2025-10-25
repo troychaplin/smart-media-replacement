@@ -37,8 +37,8 @@ class ManageMedia {
 			return;
 		}
 
-		// Register the script first.
-		wp_register_script(
+		// Enqueue the script.
+		wp_enqueue_script(
 			'replace-media-script',
 			REPLACE_MEDIA_URL . 'build/replace-media.js',
 			array( 'jquery', 'wp-i18n', 'media-views' ),
@@ -46,21 +46,15 @@ class ManageMedia {
 			true
 		);
 
-		// Set the localized data.
-		$localized_data = array(
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'replace_media_nonce' ),
-		);
-
-		// Localize the script.
+		// Localize the script with necessary data.
 		wp_localize_script(
 			'replace-media-script',
 			'replaceMediaData',
-			$localized_data
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'replace_media_nonce' ),
+			)
 		);
-
-		// Enqueue the script after localization.
-		wp_enqueue_script( 'replace-media-script' );
 	}
 
 	/**
@@ -88,23 +82,18 @@ class ManageMedia {
 	 * Handle the media replacement AJAX request.
 	 */
 	public function handle_media_replacement() {
-		// Enable error reporting for debugging.
-		if ( ! defined( 'WP_DEBUG_DISPLAY' ) ) {
-			define( 'WP_DEBUG_DISPLAY', true );
-		}
-
 		// Verify nonce.
 		if ( ! check_ajax_referer( 'replace_media_nonce', 'nonce', false ) ) {
 			wp_send_json_error( __( 'Security check failed.', 'replace-media' ) );
 		}
 
-		if ( ! current_user_can( 'upload_files' ) ) {
-			wp_send_json_error( __( 'You do not have permission to replace media files.', 'replace-media' ) );
-		}
-
 		$attachment_id = isset( $_POST['attachment_id'] ) ? intval( $_POST['attachment_id'] ) : 0;
 		if ( ! $attachment_id ) {
 			wp_send_json_error( __( 'Invalid attachment ID.', 'replace-media' ) );
+		}
+
+		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+			wp_send_json_error( __( 'You do not have permission to edit this attachment.', 'replace-media' ) );
 		}
 
 		if ( ! isset( $_FILES['replacement_file'] ) ) {
@@ -144,14 +133,7 @@ class ManageMedia {
 		$attachment = \get_post( $attachment_id );
 
 		if ( ! $attachment ) {
-			$this->logger->debug( 'Attachment not found.' );
 			wp_send_json_error( __( 'Attachment not found.', 'replace-media' ) );
-		}
-
-		// Get the current file path.
-		$current_file = get_attached_file( $attachment_id );
-		if ( ! $current_file ) {
-			wp_send_json_error( __( 'Current file not found.', 'replace-media' ) );
 		}
 
 		// Handle the file upload.
@@ -192,6 +174,20 @@ class ManageMedia {
 				}
 			}
 
+			// Validate MIME type matches.
+			$current_mime = get_post_mime_type( $attachment_id );
+			$new_mime     = wp_check_filetype( $file['name'] );
+			if ( $current_mime !== $new_mime['type'] ) {
+				wp_send_json_error(
+					sprintf(
+						/* translators: 1: required mime type, 2: uploaded mime type */
+						__( 'File type mismatch. Required: %1$s, Uploaded: %2$s', 'replace-media' ),
+						$current_mime,
+						$new_mime['type']
+					)
+				);
+			}
+
 			// Validate dimensions for images.
 			$current_image_info = getimagesize( $current_file );
 			if ( $current_image_info ) {
@@ -224,7 +220,9 @@ class ManageMedia {
 				}
 
 				// Enforce strict dimension matching for all images to prevent layout issues.
-				if ( $new_width !== $comparison_width || $new_height !== $comparison_height ) {
+				$enforce_dimensions = apply_filters( 'replace_media_enforce_dimensions', true, $attachment_id );
+
+				if ( $enforce_dimensions && ( $new_width !== $comparison_width || $new_height !== $comparison_height ) ) {
 					wp_send_json_error(
 						sprintf(
 							/* translators: 1: required dimensions, 2: uploaded dimensions */
@@ -271,8 +269,8 @@ class ManageMedia {
 			// Update the attachment's file path in the database.
 			update_attached_file( $attachment_id, $final_file_path );
 
-			// Verify what was actually saved.
-			$saved_file_path = get_attached_file( $attachment_id );
+			// Allow developers to hook into the replacement process.
+			do_action( 'replace_media_file_replaced', $attachment_id, $final_file_path );
 
 			wp_send_json_success(
 				array(
@@ -280,7 +278,7 @@ class ManageMedia {
 					'url'     => wp_get_attachment_url( $attachment_id ),
 				)
 			);
-		} catch ( Exception $e ) {
+		} catch ( \Exception $e ) {
 			wp_send_json_error( $e->getMessage() );
 		}
 	}
