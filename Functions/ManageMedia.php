@@ -233,7 +233,7 @@ class ManageMedia {
 				}
 
 				// Enforce strict dimension matching for all images to prevent layout issues.
-				$enforce_dimensions = apply_filters( 'replace_media_enforce_dimensions', true, $attachment_id );
+				$enforce_dimensions = apply_filters( 'smart_media_replacement_enforce_dimensions', true, $attachment_id );
 
 				if ( $enforce_dimensions && ( $new_width !== $comparison_width || $new_height !== $comparison_height ) ) {
 					wp_send_json_error(
@@ -287,7 +287,7 @@ class ManageMedia {
 			update_attached_file( $attachment_id, $final_file_path );
 
 			// Allow developers to hook into the replacement process.
-			do_action( 'replace_media_file_replaced', $attachment_id, $final_file_path );
+			do_action( 'smart_media_replacement_file_replaced', $attachment_id, $final_file_path );
 
 			wp_send_json_success(
 				array(

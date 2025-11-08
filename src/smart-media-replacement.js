@@ -68,7 +68,8 @@ document.addEventListener('DOMContentLoaded', function () {
 					// Refresh the media library
 					window.location.reload();
 				} else {
-					const errorMessage = data.data || __('Error replacing file.', 'smart-media-replacement');
+					const errorMessage =
+						data.data || __('Error replacing file.', 'smart-media-replacement');
 					showErrorMessage(errorMessage);
 					if (button) {
 						button.disabled = false;
@@ -77,7 +78,9 @@ document.addEventListener('DOMContentLoaded', function () {
 				}
 			})
 			.catch(error => {
-				showErrorMessage(__('Error replacing file:', 'smart-media-replacement') + error.message);
+				showErrorMessage(
+					__('Error replacing file:', 'smart-media-replacement') + error.message
+				);
 				if (button) {
 					button.disabled = false;
 					button.textContent = __('Replace File', 'smart-media-replacement');
