@@ -164,9 +164,27 @@ class ManageMedia {
 			$original_filename = $this->get_original_filename( $current_filename );
 			$is_scaled_image   = $original_filename !== $current_filename;
 
-			// Validate that the new file has the correct name.
+			// Validate that the new file has the correct name and MIME type.
 			$new_filename = basename( $file['name'] );
-			if ( $new_filename !== $original_filename ) {
+			$current_mime = get_post_mime_type( $attachment_id );
+			$new_mime     = wp_check_filetype( $file['name'] );
+
+			$filename_matches = $new_filename === $original_filename;
+			$mime_matches     = $current_mime === $new_mime['type'];
+
+			// Check file type first (more critical), then filename.
+			if ( ! $mime_matches ) {
+				// MIME type is wrong - show simplified file type error.
+				wp_send_json_error(
+					sprintf(
+						/* translators: 1: required mime type, 2: uploaded mime type */
+						__( 'The replacement file must use the exact same file type. Required type: %1$s, Uploaded type: %2$s', 'smart-media-replacement' ),
+						$current_mime,
+						$new_mime['type']
+					)
+				);
+			} elseif ( ! $filename_matches ) {
+				// Only filename is wrong.
 				if ( $is_scaled_image ) {
 					wp_send_json_error(
 						sprintf(
@@ -185,20 +203,6 @@ class ManageMedia {
 						)
 					);
 				}
-			}
-
-			// Validate MIME type matches.
-			$current_mime = get_post_mime_type( $attachment_id );
-			$new_mime     = wp_check_filetype( $file['name'] );
-			if ( $current_mime !== $new_mime['type'] ) {
-				wp_send_json_error(
-					sprintf(
-						/* translators: 1: required mime type, 2: uploaded mime type */
-						__( 'File type mismatch. Required: %1$s, Uploaded: %2$s', 'smart-media-replacement' ),
-						$current_mime,
-						$new_mime['type']
-					)
-				);
 			}
 
 			// Validate dimensions for images.

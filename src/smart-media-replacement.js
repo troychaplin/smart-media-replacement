@@ -19,9 +19,92 @@ document.addEventListener('DOMContentLoaded', function () {
 		return;
 	}
 
+	// Function to show inline error message in table row
+	function showInlineErrorMessage(button, message) {
+		// Find the table row
+		const tableRow = button.closest('tr');
+		if (!tableRow) {
+			return false;
+		}
+
+		// Remove any existing inline error for this row (check next sibling)
+		const nextRow = tableRow.nextElementSibling;
+		if (nextRow && nextRow.classList.contains('replace-media-inline-error')) {
+			nextRow.remove();
+		}
+
+		// Create a new row for the error message
+		const errorRow = document.createElement('tr');
+		errorRow.className = 'replace-media-inline-error';
+
+		// Get the number of columns in the table
+		const columnCount = tableRow.querySelectorAll('td, th').length;
+
+		// Create a cell that spans all columns
+		const errorCell = document.createElement('td');
+		errorCell.colSpan = columnCount;
+		errorCell.style.padding = '8px 12px';
+		errorCell.style.backgroundColor = '#fcf0f1';
+		errorCell.style.borderLeft = '4px solid #d63638';
+
+		// Create the error message content
+		const errorContent = document.createElement('div');
+		errorContent.style.display = 'flex';
+		errorContent.style.alignItems = 'center';
+		errorContent.style.justifyContent = 'space-between';
+
+		const errorText = document.createElement('span');
+		errorText.innerHTML =
+			'<strong style="color: #d63638;">' +
+			__('Error:', 'smart-media-replacement') +
+			'</strong> ' +
+			message;
+		errorContent.appendChild(errorText);
+
+		// Create dismiss button
+		const dismissButton = document.createElement('button');
+		dismissButton.type = 'button';
+		dismissButton.className = 'button-link';
+		dismissButton.style.color = '#d63638';
+		dismissButton.style.textDecoration = 'none';
+		dismissButton.style.cursor = 'pointer';
+		dismissButton.textContent = __('Dismiss', 'smart-media-replacement');
+		dismissButton.addEventListener('click', function () {
+			errorRow.remove();
+		});
+		errorContent.appendChild(dismissButton);
+
+		errorCell.appendChild(errorContent);
+		errorRow.appendChild(errorCell);
+
+		// Insert the error row after the current row
+		tableRow.parentNode.insertBefore(errorRow, tableRow.nextSibling);
+
+		// Auto-dismiss after 10 seconds
+		setTimeout(function () {
+			if (errorRow.parentNode) {
+				errorRow.style.transition = 'opacity 0.3s';
+				errorRow.style.opacity = '0';
+				setTimeout(function () {
+					errorRow.remove();
+				}, 300);
+			}
+		}, 10000);
+
+		// Scroll to the error row
+		errorRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+		return true;
+	}
+
 	// Function to show error messages
-	function showErrorMessage(message) {
-		// Create a WordPress-style admin notice
+	function showErrorMessage(message, button) {
+		// Try to show inline error if button is in a table row
+		if (button && showInlineErrorMessage(button, message)) {
+			return;
+		}
+
+		// Fall back to top-of-page notice
 		const noticeId = 'replace-media-error-notice';
 
 		// Remove any existing error notices
@@ -123,7 +206,7 @@ document.addEventListener('DOMContentLoaded', function () {
 				} else {
 					const errorMessage =
 						data.data || __('Error replacing file.', 'smart-media-replacement');
-					showErrorMessage(errorMessage);
+					showErrorMessage(errorMessage, button);
 					if (button) {
 						button.disabled = false;
 						button.textContent = __('Replace File', 'smart-media-replacement');
@@ -132,7 +215,8 @@ document.addEventListener('DOMContentLoaded', function () {
 			})
 			.catch(error => {
 				showErrorMessage(
-					__('Error replacing file:', 'smart-media-replacement') + ' ' + error.message
+					__('Error replacing file:', 'smart-media-replacement') + ' ' + error.message,
+					button
 				);
 				if (button) {
 					button.disabled = false;
