@@ -1,4 +1,4 @@
-=== Replace Media ===
+=== Smart Media Replacement ===
 Contributors:      areziaal
 Tags:              media, replace, upload, attachment, pdf
 Requires at least: 6.6
@@ -12,7 +12,7 @@ Replace media files while maintaining their original URLs and metadata. Update P
 
 == Description ==
 
-Replace Media is a WordPress plugin that allows you to replace media files while maintaining their original URLs and metadata. This is particularly useful for updating files like PDFs, images, or other documents without breaking existing links.
+Smart Media Replacement is a WordPress plugin that allows you to replace media files while maintaining their original URLs and metadata. This is particularly useful for updating files like PDFs, images, or other documents without breaking existing links, especially when organizing media in year and month based folders.
 
 = Features =
 
@@ -89,7 +89,7 @@ Yes, you must have the `edit_post` capability for the specific attachment. Conta
 
 = Can I disable dimension enforcement for specific images? =
 
-Yes, developers can use the `replace_media_enforce_dimensions` filter to disable or customize dimension enforcement for specific attachments. See the Developer Hooks section for details.
+Yes, developers can use the `smart_media_replacement_enforce_dimensions` filter to disable or customize dimension enforcement for specific attachments. See the Developer Hooks section for details.
 
 == Screenshots ==
 

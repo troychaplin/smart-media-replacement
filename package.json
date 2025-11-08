@@ -1,5 +1,5 @@
 {
-	"name": "replace-media",
+	"name": "smart-media-replacement",
 	"version": "1.0.0",
 	"description": "This plugin allows you to replace media in the media library.",
 	"author": "Troy Chaplin",
@@ -22,7 +22,7 @@
 	},
 	"scripts": {
 		"start": "webpack --config webpack.scripts.js --watch",
-		"build": "rm -rf build && npm run build:scripts && npm run size",
+		"build": "rm -rf build && npm run build:scripts",
 		"build:scripts": "wp-scripts build --webpack-copy-php --config webpack.scripts.js",
 		"format": "npm run format:js && npm run format:php",
 		"format:js": "wp-scripts lint-js --fix",
@@ -30,7 +30,6 @@
 		"lint": "npm run lint:js && npm run lint:php",
 		"lint:js": "wp-scripts lint-js --max-warnings=0",
 		"lint:php": "composer run lint",
-		"size": "size-limit",
 		"packages-update": "wp-scripts packages-update",
 		"plugin-zip": "wp-scripts plugin-zip",
 		"prepare": "husky"
@@ -39,16 +38,14 @@
 		"[^.]*"
 	],
 	"devDependencies": {
-		"@size-limit/preset-small-lib": "^11.2.0",
-		"@wordpress/env": "^10.33.0",
+		"@wordpress/env": "^10.34.0",
 		"@wordpress/eslint-plugin": "^22.19.0",
-		"@wordpress/i18n": "^6.6.0",
-		"@wordpress/prettier-config": "^4.33.0",
-		"@wordpress/scripts": "^30.26.0",
-		"@wordpress/stylelint-config": "^23.25.0",
+		"@wordpress/i18n": "^6.7.0",
+		"@wordpress/prettier-config": "^4.34.0",
+		"@wordpress/scripts": "^30.27.0",
+		"@wordpress/stylelint-config": "^23.26.0",
 		"eslint-config-prettier": "10.1.8",
 		"husky": "^9.1.7",
-		"size-limit": "^11.2.0",
 		"stylelint": "^16.25.0",
 		"stylelint-scss": "^6.12.1",
 		"webpack": "^5.102.1",

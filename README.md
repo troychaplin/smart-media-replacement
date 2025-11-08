@@ -87,7 +87,7 @@ A WordPress plugin that allows you to replace media files while maintaining thei
 
 #### Filters
 
-**`replace_media_enforce_dimensions`**
+**`smart_media_replacement_enforce_dimensions`**
 
 Allows you to disable or customize dimension enforcement for specific attachments.
 
@@ -99,7 +99,7 @@ Allows you to disable or customize dimension enforcement for specific attachment
  * @param int  $attachment_id The attachment ID being replaced.
  * @return bool
  */
-add_filter( 'replace_media_enforce_dimensions', function( $enforce, $attachment_id ) {
+add_filter( 'smart_media_replacement_enforce_dimensions', function( $enforce, $attachment_id ) {
 	// Allow flexible dimensions for attachment ID 123
 	if ( $attachment_id === 123 ) {
 		return false;
@@ -110,7 +110,7 @@ add_filter( 'replace_media_enforce_dimensions', function( $enforce, $attachment_
 
 #### Actions
 
-**`replace_media_file_replaced`**
+**`smart_media_replacement_file_replaced`**
 
 Fires after a media file has been successfully replaced.
 
@@ -121,7 +121,7 @@ Fires after a media file has been successfully replaced.
  * @param int    $attachment_id   The ID of the attachment that was replaced.
  * @param string $new_file_path   The full path to the new file.
  */
-add_action( 'replace_media_file_replaced', function( $attachment_id, $new_file_path ) {
+add_action( 'smart_media_replacement_file_replaced', function( $attachment_id, $new_file_path ) {
 	// Clear custom caches
 	wp_cache_delete( 'my_custom_cache_' . $attachment_id );
 	
