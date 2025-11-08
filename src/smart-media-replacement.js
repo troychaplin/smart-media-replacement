@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 		// Clean fallback - show an alert with proper translation
 		/* eslint-disable no-alert */
-		window.alert(__('Error:', 'replace-media') + ' ' + message);
+		window.alert(__('Error:', 'smart-media-replacement') + ' ' + message);
 		/* eslint-enable no-alert */
 	}
 
@@ -68,19 +68,19 @@ document.addEventListener('DOMContentLoaded', function () {
 					// Refresh the media library
 					window.location.reload();
 				} else {
-					const errorMessage = data.data || __('Error replacing file.', 'replace-media');
+					const errorMessage = data.data || __('Error replacing file.', 'smart-media-replacement');
 					showErrorMessage(errorMessage);
 					if (button) {
 						button.disabled = false;
-						button.textContent = __('Replace File', 'replace-media');
+						button.textContent = __('Replace File', 'smart-media-replacement');
 					}
 				}
 			})
 			.catch(error => {
-				showErrorMessage(__('Error replacing file:', 'replace-media') + error.message);
+				showErrorMessage(__('Error replacing file:', 'smart-media-replacement') + error.message);
 				if (button) {
 					button.disabled = false;
-					button.textContent = __('Replace File', 'replace-media');
+					button.textContent = __('Replace File', 'smart-media-replacement');
 				}
 			});
 	}
@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 			// Show loading state
 			button.disabled = true;
-			button.textContent = __('Replacing…', 'replace-media');
+			button.textContent = __('Replacing…', 'smart-media-replacement');
 
 			// Perform the replacement directly (strict dimension checking is now server-side)
 			performReplacement(attachmentId, selectedFile, button);

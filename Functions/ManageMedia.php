@@ -1,6 +1,6 @@
 <?php // phpcs:ignore Squiz.Commenting.FileComment.Missing
 
-namespace Replace_Media;
+namespace Smart_Media_Replacement;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * This class handles the media replacement functionality.
  *
- * @package Replace_Media
+ * @package Smart_Media_Replacement
  */
 class ManageMedia {
 
@@ -41,7 +41,7 @@ class ManageMedia {
 		// Enqueue the script.
 		wp_enqueue_script(
 			'replace-media-script',
-			REPLACE_MEDIA_URL . 'build/replace-media.js',
+			SMART_MEDIA_REPLACEMENT_PLUGIN_URL . 'build/smart-media-replacement.js',
 			array( 'jquery', 'wp-i18n', 'media-views' ),
 			'1.0.0',
 			true
@@ -67,7 +67,7 @@ class ManageMedia {
 		?>
 		<div class="misc-pub-section misc-pub-replace-media">
 			<button type="button" class="button button-large replace-media-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
-				<?php esc_html_e( 'Replace File', 'replace-media' ); ?>
+				<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
 			</button>
 		</div>
 		<?php
@@ -85,7 +85,7 @@ class ManageMedia {
 			$actions['replace_media'] = sprintf(
 				'<a href="#" class="replace-media-link replace-media-button" data-attachment-id="%d">%s</a>',
 				$post->ID,
-				__( 'Replace', 'replace-media' )
+				__( 'Replace', 'smart-media-replacement' )
 			);
 		}
 		return $actions;
@@ -97,20 +97,20 @@ class ManageMedia {
 	public function handle_media_replacement() {
 		// Verify nonce.
 		if ( ! check_ajax_referer( 'replace_media_nonce', 'nonce', false ) ) {
-			wp_send_json_error( __( 'Security check failed.', 'replace-media' ) );
+			wp_send_json_error( __( 'Security check failed.', 'smart-media-replacement' ) );
 		}
 
 		$attachment_id = isset( $_POST['attachment_id'] ) ? intval( $_POST['attachment_id'] ) : 0;
 		if ( ! $attachment_id ) {
-			wp_send_json_error( __( 'Invalid attachment ID.', 'replace-media' ) );
+			wp_send_json_error( __( 'Invalid attachment ID.', 'smart-media-replacement' ) );
 		}
 
 		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
-			wp_send_json_error( __( 'You do not have permission to edit this attachment.', 'replace-media' ) );
+			wp_send_json_error( __( 'You do not have permission to edit this attachment.', 'smart-media-replacement' ) );
 		}
 
 		if ( ! isset( $_FILES['replacement_file'] ) ) {
-			wp_send_json_error( __( 'No file was uploaded.', 'replace-media' ) );
+			wp_send_json_error( __( 'No file was uploaded.', 'smart-media-replacement' ) );
 		}
 
 		// Validate and sanitize file upload components.
@@ -126,7 +126,7 @@ class ManageMedia {
 			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- tmp_name is system-generated, not user input
 			$file_tmp_name = $_FILES['replacement_file']['tmp_name'];
 		} else {
-			wp_send_json_error( __( 'Invalid file upload.', 'replace-media' ) );
+			wp_send_json_error( __( 'Invalid file upload.', 'smart-media-replacement' ) );
 		}
 
 		// Create sanitized file array.
@@ -140,13 +140,13 @@ class ManageMedia {
 
 		// Check for upload errors.
 		if ( UPLOAD_ERR_OK !== $file['error'] ) {
-			wp_send_json_error( __( 'File upload error.', 'replace-media' ) );
+			wp_send_json_error( __( 'File upload error.', 'smart-media-replacement' ) );
 		}
 
 		$attachment = \get_post( $attachment_id );
 
 		if ( ! $attachment ) {
-			wp_send_json_error( __( 'Attachment not found.', 'replace-media' ) );
+			wp_send_json_error( __( 'Attachment not found.', 'smart-media-replacement' ) );
 		}
 
 		// Handle the file upload.
@@ -171,7 +171,7 @@ class ManageMedia {
 					wp_send_json_error(
 						sprintf(
 							/* translators: 1: The original filename without -scaled, 2: The current scaled filename */
-							__( 'This image was automatically scaled by WordPress. Please upload your replacement file with the original filename: %1$s (not %2$s)', 'replace-media' ),
+							__( 'This image was automatically scaled by WordPress. Please upload your replacement file with the original filename: %1$s (not %2$s)', 'smart-media-replacement' ),
 							$original_filename,
 							$current_filename
 						)
@@ -180,7 +180,7 @@ class ManageMedia {
 					wp_send_json_error(
 						sprintf(
 							/* translators: %s: The original filename that must be matched. */
-							__( 'The new file must have the same name as the original file (%s). Please rename your file and try again.', 'replace-media' ),
+							__( 'The new file must have the same name as the original file (%s). Please rename your file and try again.', 'smart-media-replacement' ),
 							$original_filename
 						)
 					);
@@ -194,7 +194,7 @@ class ManageMedia {
 				wp_send_json_error(
 					sprintf(
 						/* translators: 1: required mime type, 2: uploaded mime type */
-						__( 'File type mismatch. Required: %1$s, Uploaded: %2$s', 'replace-media' ),
+						__( 'File type mismatch. Required: %1$s, Uploaded: %2$s', 'smart-media-replacement' ),
 						$current_mime,
 						$new_mime['type']
 					)
@@ -207,7 +207,7 @@ class ManageMedia {
 				// This is an image, check dimensions.
 				$new_image_info = getimagesize( $file['tmp_name'] );
 				if ( ! $new_image_info ) {
-					wp_send_json_error( __( 'The uploaded file is not a valid image.', 'replace-media' ) );
+					wp_send_json_error( __( 'The uploaded file is not a valid image.', 'smart-media-replacement' ) );
 				}
 
 				$current_width  = $current_image_info[0];
@@ -239,7 +239,7 @@ class ManageMedia {
 					wp_send_json_error(
 						sprintf(
 							/* translators: 1: required dimensions, 2: uploaded dimensions */
-							__( 'The replacement must have the exact same dimensions as the original image. Required: %1$s, Uploaded: %2$s.', 'replace-media' ),
+							__( 'The replacement must have the exact same dimensions as the original image. Required: %1$s, Uploaded: %2$s.', 'smart-media-replacement' ),
 							"{$comparison_width}x{$comparison_height}",
 							"{$new_width}x{$new_height}"
 						)
@@ -259,7 +259,7 @@ class ManageMedia {
 			global $wp_filesystem;
 
 			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
-				wp_send_json_error( __( 'Failed to move uploaded file.', 'replace-media' ) );
+				wp_send_json_error( __( 'Failed to move uploaded file.', 'smart-media-replacement' ) );
 			}
 
 			// Update the attachment metadata.
@@ -291,7 +291,7 @@ class ManageMedia {
 
 			wp_send_json_success(
 				array(
-					'message' => __( 'File replaced successfully.', 'replace-media' ),
+					'message' => __( 'File replaced successfully.', 'smart-media-replacement' ),
 					'url'     => wp_get_attachment_url( $attachment_id ),
 				)
 			);

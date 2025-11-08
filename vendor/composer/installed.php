@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
-        'name' => 'troychaplin/replace-media',
+        'name' => 'troychaplin/smart-media-replacement',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '0e6fad337c6129d4740790c58c8944129e7e3539',
+        'reference' => '8537dfe25d4d8266f9fa7878ec78da2e4a74f5b9',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -20,9 +20,9 @@
             'dev_requirement' => true,
         ),
         'phpcsstandards/phpcsextra' => array(
-            'pretty_version' => '1.4.1',
-            'version' => '1.4.1.0',
-            'reference' => '882b8c947ada27eb002870fe77fee9ce0a454cdb',
+            'pretty_version' => '1.4.2',
+            'version' => '1.4.2.0',
+            'reference' => '8e89a01c7b8fed84a12a2a7f5a23a44cdbe4f62e',
             'type' => 'phpcodesniffer-standard',
             'install_path' => __DIR__ . '/../phpcsstandards/phpcsextra',
             'aliases' => array(),
@@ -38,18 +38,18 @@
             'dev_requirement' => true,
         ),
         'squizlabs/php_codesniffer' => array(
-            'pretty_version' => '3.13.4',
-            'version' => '3.13.4.0',
-            'reference' => 'ad545ea9c1b7d270ce0fc9cbfb884161cd706119',
+            'pretty_version' => '3.13.5',
+            'version' => '3.13.5.0',
+            'reference' => '0ca86845ce43291e8f5692c7356fccf3bcf02bf4',
             'type' => 'library',
             'install_path' => __DIR__ . '/../squizlabs/php_codesniffer',
             'aliases' => array(),
             'dev_requirement' => true,
         ),
-        'troychaplin/replace-media' => array(
+        'troychaplin/smart-media-replacement' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '0e6fad337c6129d4740790c58c8944129e7e3539',
+            'reference' => '8537dfe25d4d8266f9fa7878ec78da2e4a74f5b9',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

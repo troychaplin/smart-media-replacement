@@ -4,7 +4,7 @@ module.exports = {
 	...defaultConfig,
 	entry: {
 		...defaultConfig.entry,
-		'replace-media': path.resolve(__dirname, 'src/replace-media.js'),
+		'smart-media-replacement': path.resolve(__dirname, 'src/smart-media-replacement.js'),
 	},
 	output: {
 		...defaultConfig.output,

@@ -1,11 +1,11 @@
 {
-	"name": "troychaplin/replace-media",
+	"name": "troychaplin/smart-media-replacement",
 	"description": "A plugin that provides a way to replace media in the media library.",
 	"type": "wordpress-plugin",
 	"license": "GPL-2.0-or-later",
 	"autoload": {
 		"psr-4": {
-			"Replace_Media\\": "Functions/"
+			"Smart_Media_Replacement\\": "Functions/"
 		}
 	},
 	"require-dev": {
