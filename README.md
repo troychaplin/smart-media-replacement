@@ -18,7 +18,7 @@ A WordPress plugin that allows you to replace media files while maintaining thei
 ## Installation
 
 1. Download the plugin files
-2. Upload the `replace-media` folder to the `/wp-content/plugins/` directory
+2. Upload the `smart-media-replacement` folder to the `/wp-content/plugins/` directory
 3. Activate the plugin through the 'Plugins' menu in WordPress
 
 ## Usage
