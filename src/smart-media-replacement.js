@@ -21,11 +21,79 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	// Function to show error messages
 	function showErrorMessage(message) {
-		// For Media Library context, always use alert for immediate visibility
-		// Block Editor notices don't display reliably in classic Media Library screens
-		/* eslint-disable no-alert */
-		window.alert(__('Error:', 'smart-media-replacement') + ' ' + message);
-		/* eslint-enable no-alert */
+		// Create a WordPress-style admin notice
+		const noticeId = 'replace-media-error-notice';
+
+		// Remove any existing error notices
+		const existingNotice = document.getElementById(noticeId);
+		if (existingNotice) {
+			existingNotice.remove();
+		}
+
+		// Create the notice element
+		const notice = document.createElement('div');
+		notice.id = noticeId;
+		notice.className = 'notice notice-error is-dismissible';
+		notice.style.marginTop = '20px';
+		notice.style.marginBottom = '20px';
+
+		// Create the paragraph element
+		const paragraph = document.createElement('p');
+		paragraph.innerHTML =
+			'<strong>' +
+			__('Media Replacement Error:', 'smart-media-replacement') +
+			'</strong> ' +
+			message;
+		notice.appendChild(paragraph);
+
+		// Create the dismiss button
+		const dismissButton = document.createElement('button');
+		dismissButton.type = 'button';
+		dismissButton.className = 'notice-dismiss';
+		dismissButton.innerHTML =
+			'<span class="screen-reader-text">' +
+			__('Dismiss this notice.', 'smart-media-replacement') +
+			'</span>';
+		dismissButton.addEventListener('click', function () {
+			notice.remove();
+		});
+		notice.appendChild(dismissButton);
+
+		// Try to find the notices wrapper first
+		const noticesWrapper =
+			document.querySelector('.wrap h1') ||
+			document.querySelector('.wrap h2') ||
+			document.querySelector('#wpbody-content .wrap');
+
+		if (noticesWrapper) {
+			// Insert after the heading
+			if (noticesWrapper.tagName === 'H1' || noticesWrapper.tagName === 'H2') {
+				noticesWrapper.parentNode.insertBefore(notice, noticesWrapper.nextSibling);
+			} else {
+				// Insert as first child of .wrap
+				noticesWrapper.insertBefore(notice, noticesWrapper.firstChild);
+			}
+		} else {
+			// Fallback to inserting at the top of wpbody-content
+			const wpbodyContent = document.getElementById('wpbody-content');
+			if (wpbodyContent) {
+				wpbodyContent.insertBefore(notice, wpbodyContent.firstChild);
+			}
+		}
+
+		// Auto-dismiss after 10 seconds
+		setTimeout(function () {
+			if (notice.parentNode) {
+				notice.style.transition = 'opacity 0.3s';
+				notice.style.opacity = '0';
+				setTimeout(function () {
+					notice.remove();
+				}, 300);
+			}
+		}, 10000);
+
+		// Scroll to the notice so it's visible
+		notice.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 	}
 
 	// Function to perform the actual replacement
