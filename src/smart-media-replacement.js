@@ -21,23 +21,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	// Function to show error messages
 	function showErrorMessage(message) {
-		// Try to use WordPress Block Editor notices first
-		if (typeof wp !== 'undefined' && wp.data && wp.data.dispatch) {
-			try {
-				const noticesStore = wp.data.dispatch('core/notices');
-				if (noticesStore && noticesStore.createErrorNotice) {
-					noticesStore.createErrorNotice(message, {
-						id: 'replace-media-error',
-						isDismissible: true,
-					});
-					return;
-				}
-			} catch (error) {
-				// Silently continue to fallback
-			}
-		}
-
-		// Clean fallback - show an alert with proper translation
+		// For Media Library context, always use alert for immediate visibility
+		// Block Editor notices don't display reliably in classic Media Library screens
 		/* eslint-disable no-alert */
 		window.alert(__('Error:', 'smart-media-replacement') + ' ' + message);
 		/* eslint-enable no-alert */
@@ -79,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function () {
 			})
 			.catch(error => {
 				showErrorMessage(
-					__('Error replacing file:', 'smart-media-replacement') + error.message
+					__('Error replacing file:', 'smart-media-replacement') + ' ' + error.message
 				);
 				if (button) {
 					button.disabled = false;
