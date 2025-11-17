@@ -65,7 +65,7 @@ class ManageMedia {
 	 */
 	public function smart_media_replacement_submit_button( $post ) {
 		?>
-		<div>
+		<div class="misc-pub-section">
 			<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
 				<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
 			</button>
