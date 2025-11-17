@@ -13,8 +13,8 @@ import { __ } from '@wordpress/i18n';
  * Handle the media replacement functionality.
  */
 document.addEventListener('DOMContentLoaded', function () {
-	// Check if replaceMediaData is available
-	if (typeof window.replaceMediaData === 'undefined') {
+	// Check if smartMediaReplacementData is available
+	if (typeof window.smartMediaReplacementData === 'undefined') {
 		// Silently fail if data is not available
 		return;
 	}
@@ -29,13 +29,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
 		// Remove any existing inline error for this row (check next sibling)
 		const nextRow = tableRow.nextElementSibling;
-		if (nextRow && nextRow.classList.contains('replace-media-inline-error')) {
+		if (nextRow && nextRow.classList.contains('smart-media-replacement-inline-error')) {
 			nextRow.remove();
 		}
 
 		// Create a new row for the error message
 		const errorRow = document.createElement('tr');
-		errorRow.className = 'replace-media-inline-error';
+		errorRow.className = 'smart-media-replacement-inline-error';
 
 		// Get the number of columns in the table
 		const columnCount = tableRow.querySelectorAll('td, th').length;
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function () {
 		}
 
 		// Fall back to top-of-page notice
-		const noticeId = 'replace-media-error-notice';
+		const noticeId = 'smart-media-replacement-error-notice';
 
 		// Remove any existing error notices
 		const existingNotice = document.getElementById(noticeId);
@@ -182,13 +182,13 @@ document.addEventListener('DOMContentLoaded', function () {
 	// Function to perform the actual replacement
 	function performReplacement(attachmentId, file, button) {
 		const formData = new FormData();
-		formData.append('action', 'replace_media_file');
-		formData.append('nonce', window.replaceMediaData.nonce);
+		formData.append('action', 'smart_media_replacement_file');
+		formData.append('nonce', window.smartMediaReplacementData.nonce);
 		formData.append('attachment_id', attachmentId);
 		formData.append('replacement_file', file);
 
 		// Send AJAX request
-		fetch(window.replaceMediaData.ajaxUrl, {
+		fetch(window.smartMediaReplacementData.ajaxUrl, {
 			method: 'POST',
 			body: formData,
 			credentials: 'same-origin',
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 	// Function to initialize replace buttons
 	function initReplaceButtons() {
-		const replaceButtons = document.querySelectorAll('.replace-media-button');
+		const replaceButtons = document.querySelectorAll('.smart-media-replacement-button');
 
 		replaceButtons.forEach(button => {
 			// Remove any existing click handlers

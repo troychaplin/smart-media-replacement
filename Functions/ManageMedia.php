@@ -20,9 +20,9 @@ class ManageMedia {
 	 */
 	public function __construct() {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
-		add_action( 'wp_ajax_replace_media_file', array( $this, 'handle_media_replacement' ) );
-		add_action( 'attachment_submitbox_misc_actions', array( $this, 'add_replace_media_button_to_submitbox' ), 20 );
-		add_filter( 'media_row_actions', array( $this, 'add_replace_media_row_action' ), 10, 2 );
+		add_action( 'wp_ajax_smart_media_replacement_file', array( $this, 'smart_media_replacement_handler' ) );
+		add_action( 'attachment_submitbox_misc_actions', array( $this, 'smart_media_replacement_submit_button' ), 20 );
+		add_filter( 'media_row_actions', array( $this, 'smart_media_replacement_row_actions' ), 10, 2 );
 	}
 
 	/**
@@ -40,7 +40,7 @@ class ManageMedia {
 
 		// Enqueue the script.
 		wp_enqueue_script(
-			'replace-media-script',
+			'smart-media-replacement-script',
 			SMART_MEDIA_REPLACEMENT_PLUGIN_URL . 'build/smart-media-replacement.js',
 			array( 'jquery', 'wp-i18n', 'media-views' ),
 			'1.0.0',
@@ -49,11 +49,11 @@ class ManageMedia {
 
 		// Localize the script with necessary data.
 		wp_localize_script(
-			'replace-media-script',
-			'replaceMediaData',
+			'smart-media-replacement-script',
+			'smartMediaReplacementData',
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( 'replace_media_nonce' ),
+				'nonce'   => wp_create_nonce( 'smart_media_replacement_nonce' ),
 			)
 		);
 	}
@@ -63,10 +63,10 @@ class ManageMedia {
 	 *
 	 * @param \WP_Post $post The attachment post object.
 	 */
-	public function add_replace_media_button_to_submitbox( $post ) {
+	public function smart_media_replacement_submit_button( $post ) {
 		?>
-		<div class="misc-pub-section misc-pub-replace-media">
-			<button type="button" class="button button-large replace-media-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+		<div>
+			<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
 				<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
 			</button>
 		</div>
@@ -80,10 +80,10 @@ class ManageMedia {
 	 * @param \WP_Post $post    The attachment post object.
 	 * @return array Modified actions array.
 	 */
-	public function add_replace_media_row_action( $actions, $post ) {
+	public function smart_media_replacement_row_actions( $actions, $post ) {
 		if ( current_user_can( 'edit_post', $post->ID ) ) {
-			$actions['replace_media'] = sprintf(
-				'<a href="#" class="replace-media-link replace-media-button" data-attachment-id="%d">%s</a>',
+			$actions['smart_media_replacement'] = sprintf(
+				'<a href="#" class="smart-media-replacement-link smart-media-replacement-button" data-attachment-id="%d">%s</a>',
 				$post->ID,
 				__( 'Replace', 'smart-media-replacement' )
 			);
@@ -94,9 +94,9 @@ class ManageMedia {
 	/**
 	 * Handle the media replacement AJAX request.
 	 */
-	public function handle_media_replacement() {
+	public function smart_media_replacement_handler() {
 		// Verify nonce.
-		if ( ! check_ajax_referer( 'replace_media_nonce', 'nonce', false ) ) {
+		if ( ! check_ajax_referer( 'smart_media_replacement_nonce', 'nonce', false ) ) {
 			wp_send_json_error( __( 'Security check failed.', 'smart-media-replacement' ) );
 		}
 
