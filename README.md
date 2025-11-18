@@ -1,3 +1,5 @@
+![Smart Media Replacement Plugin Banner](assets/banner-772x250.png)
+
 # Smart Media Replacement Plugin
 
 A WordPress plugin that allows you to replace media files while maintaining their original URLs and metadata. This is particularly useful for updating files like PDFs, images, or other documents without breaking existing links.
