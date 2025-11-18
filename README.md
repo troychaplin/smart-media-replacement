@@ -1,4 +1,4 @@
-![Smart Media Replacement Plugin Banner](assets/banner-772x250.png)
+<img src="assets/banner-772x250.png" alt="Smart Media Replacement Plugin Banner" style="width: 100%; height: auto;">
 
 # Smart Media Replacement Plugin
 
