@@ -1,0 +1,307 @@
+/**
+ * Smart Media Replacement - Revision UI Styles
+ */
+
+/* Revision History Container */
+.smr-revision-history {
+	padding: 0;
+}
+
+/* Header with current version and actions */
+.smr-revision-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 0;
+	border-bottom: 1px solid #dcdcde;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.smr-revision-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.smr-current-version {
+	font-size: 14px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.smr-storage-info {
+	font-size: 12px;
+	color: #646970;
+}
+
+.smr-revision-actions {
+	display: flex;
+	gap: 8px;
+}
+
+/* No revisions message */
+.smr-no-revisions {
+	color: #646970;
+	font-style: italic;
+	padding: 16px;
+	background: #f6f7f7;
+	border-radius: 4px;
+	text-align: center;
+}
+
+/* Revision List */
+.smr-revision-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* Individual Revision Item */
+.smr-revision-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	padding: 16px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	gap: 16px;
+}
+
+.smr-revision-item:hover {
+	background: #f0f0f1;
+	border-color: #c3c4c7;
+}
+
+.smr-revision-item.smr-latest {
+	background: #f0f6fc;
+	border-color: #72aee6;
+}
+
+/* Revision Main Content */
+.smr-revision-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.smr-revision-version {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+}
+
+.smr-revision-version strong {
+	font-size: 14px;
+	color: #1d2327;
+}
+
+.smr-badge {
+	display: inline-block;
+	padding: 2px 8px;
+	background: #2271b1;
+	color: #fff;
+	font-size: 11px;
+	font-weight: 600;
+	border-radius: 3px;
+	text-transform: uppercase;
+}
+
+.smr-revision-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	font-size: 12px;
+	color: #646970;
+	margin-bottom: 8px;
+}
+
+.smr-revision-meta span::after {
+	content: '•';
+	margin-left: 8px;
+}
+
+.smr-revision-meta span:last-child::after {
+	content: '';
+	margin-left: 0;
+}
+
+.smr-revision-comment {
+	font-size: 13px;
+	color: #50575e;
+	font-style: italic;
+	padding: 8px;
+	background: #fff;
+	border-left: 3px solid #dcdcde;
+	border-radius: 2px;
+}
+
+/* Revision Action Buttons */
+.smr-revision-buttons {
+	display: flex;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+/* Modal Styles */
+.smr-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.smr-modal-content {
+	background: #fff;
+	border-radius: 4px;
+	max-width: 900px;
+	width: 95%;
+	max-height: 90vh;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+.smr-modal-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px 20px;
+	border-bottom: 1px solid #dcdcde;
+}
+
+.smr-modal-header h2 {
+	margin: 0;
+	font-size: 18px;
+}
+
+.smr-modal-close {
+	background: none;
+	border: none;
+	font-size: 24px;
+	cursor: pointer;
+	color: #646970;
+	padding: 0;
+	line-height: 1;
+}
+
+.smr-modal-close:hover {
+	color: #1d2327;
+}
+
+.smr-modal-body {
+	padding: 20px;
+	overflow: auto;
+}
+
+/* Comparison Controls */
+.smr-comparison-controls {
+	display: flex;
+	gap: 24px;
+	margin-bottom: 20px;
+	justify-content: center;
+}
+
+.smr-comparison-select {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.smr-comparison-select label {
+	font-weight: 600;
+}
+
+.smr-comparison-select select {
+	min-width: 150px;
+}
+
+/* Comparison Images */
+.smr-comparison-images {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 20px;
+}
+
+.smr-comparison-left,
+.smr-comparison-right {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+}
+
+.smr-comparison-images img {
+	max-width: 100%;
+	max-height: 400px;
+	object-fit: contain;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+
+.smr-comparison-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: #1d2327;
+	padding: 4px 12px;
+	background: #f0f0f1;
+	border-radius: 3px;
+}
+
+/* Replacement Modal Overlay */
+.smr-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	z-index: 100000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.smr-replacement-modal {
+	background: #fff;
+	padding: 24px;
+	border-radius: 4px;
+	max-width: 500px;
+	width: 90%;
+	box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 782px) {
+	.smr-revision-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.smr-revision-item {
+		flex-direction: column;
+	}
+
+	.smr-revision-buttons {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.smr-comparison-controls {
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.smr-comparison-images {
+		grid-template-columns: 1fr;
+	}
+}
