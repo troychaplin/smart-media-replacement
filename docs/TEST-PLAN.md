@@ -528,16 +528,16 @@ Key log entries to look for in `wp-content/debug.log`:
 | 3.3 | Second Replacement - Major | ✅ | |
 | 3.4 | Comment Required | ✅ | |
 | 3.5 | Validation Errors | ✅ | |
-| 4.1 | History Display | ⬜ | |
-| 4.2 | Download Single | ⬜ | |
-| 4.3 | Download All (ZIP) | ⬜ | |
-| 4.4 | Image Preview | ⬜ | |
-| 4.5 | Image Comparison | ⬜ | |
-| 5.1 | Restore Previous Version | ⬜ | |
-| 5.2 | Verify Restore Revision | ⬜ | |
-| 6.1 | Revision Limit | ⬜ | |
-| 6.2 | Retention Policy | ⬜ | |
-| 7.1-7.5 | Deactivation Tests | ⬜ | |
+| 4.1 | History Display | ✅ | |
+| 4.2 | Download Single | ✅ | Version prefix doubles up |
+| 4.3 | Download All (ZIP) | ✅ | |
+| 4.4 | Image Preview | ✅ | |
+| 4.5 | Image Comparison | ✅ | |
+| 5.1 | Restore Previous Version | ✅ | |
+| 5.2 | Verify Restore Revision | ✅ | |
+| 6.1 | Revision Limit | ✅ | |
+| 6.2 | Retention Policy | ✅ | |
+| 7.1-7.5 | Deactivation Tests | ✅ | |
 | 8.1-8.3 | Multisite Tests | ⬜ | |
 | 9.1-9.4 | Edge Cases | ⬜ | |
 | 10.1-10.3 | Error Handling | ⬜ | |

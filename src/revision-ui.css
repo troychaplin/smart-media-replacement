@@ -280,6 +280,26 @@
 	box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
 }
 
+/* View Revisions Button Badge */
+.smr-revision-count-badge {
+	font-weight: normal;
+	opacity: 0.8;
+}
+
+/* View Revisions link in row actions */
+.smr-view-revisions-link {
+	color: #2271b1;
+}
+
+.smr-view-revisions-link:hover {
+	color: #135e96;
+}
+
+/* Revisions Modal Loading Spinner */
+.smr-revisions-loading .spinner {
+	margin: 0 auto 10px;
+}
+
 /* Responsive adjustments */
 @media screen and (max-width: 782px) {
 	.smr-revision-header {

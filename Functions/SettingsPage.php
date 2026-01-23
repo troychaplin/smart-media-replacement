@@ -49,6 +49,7 @@ class SettingsPage {
 		register_setting( 'smr_settings', 'smr_retention_days', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'smr_settings', 'smr_default_version_type', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 		register_setting( 'smr_settings', 'smr_require_comment', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
+		register_setting( 'smr_settings', 'smr_revision_file_types', array( 'sanitize_callback' => 'sanitize_text_field' ) );
 		register_setting( 'smr_settings', 'smr_delete_files_on_deactivate', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
 		register_setting( 'smr_settings', 'smr_delete_data_on_deactivate', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
 
@@ -58,6 +59,14 @@ class SettingsPage {
 			__( 'Revision Settings', 'smart-media-replacement' ),
 			array( $this, 'render_revision_section' ),
 			'smr-settings'
+		);
+
+		add_settings_field(
+			'smr_revision_file_types',
+			__( 'Enable Revisions For', 'smart-media-replacement' ),
+			array( $this, 'render_revision_file_types_field' ),
+			'smr-settings',
+			'smr_revision_settings'
 		);
 
 		add_settings_field(
@@ -214,6 +223,21 @@ class SettingsPage {
 		echo '</table>';
 
 		error_log( '[SMR] Settings page: revision_count=' . $revision_count . ', storage=' . size_format( $total_storage ) );
+	}
+
+	/**
+	 * Render revision file types field.
+	 */
+	public function render_revision_file_types_field(): void {
+		$value = get_option( 'smr_revision_file_types', 'documents' );
+		?>
+		<select name="smr_revision_file_types">
+			<option value="documents" <?php selected( $value, 'documents' ); ?>><?php esc_html_e( 'Documents Only (PDFs, Word, Excel, etc.)', 'smart-media-replacement' ); ?></option>
+			<option value="images" <?php selected( $value, 'images' ); ?>><?php esc_html_e( 'Images Only (JPEG, PNG, GIF, etc.)', 'smart-media-replacement' ); ?></option>
+			<option value="all" <?php selected( $value, 'all' ); ?>><?php esc_html_e( 'All File Types', 'smart-media-replacement' ); ?></option>
+		</select>
+		<p class="description"><?php esc_html_e( 'Choose which file types should have revision tracking enabled.', 'smart-media-replacement' ); ?></p>
+		<?php
 	}
 
 	/**

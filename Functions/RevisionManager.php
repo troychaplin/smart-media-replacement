@@ -45,6 +45,12 @@ class RevisionManager {
 	 * @param array $replacement_data Data about the replacement (version_type, comment).
 	 */
 	public function create_revision_before_replace( int $attachment_id, array $replacement_data = array() ) {
+		// Check if revisions are enabled for this file type.
+		if ( ! $this->is_revision_enabled_for_attachment( $attachment_id ) ) {
+			error_log( '[SMR] Revision creation skipped for attachment ' . $attachment_id . ' (file type not enabled)' );
+			return;
+		}
+
 		/**
 		 * Filter whether to create a revision for this attachment.
 		 *
@@ -202,15 +208,27 @@ class RevisionManager {
 		 */
 		$max_revisions = apply_filters( 'smr_max_revisions', (int) get_option( 'smr_max_revisions', 10 ), $attachment_id );
 
+		$current_count = RevisionDatabase::get_count( $attachment_id );
+		error_log( '[SMR] Enforce limit: attachment=' . $attachment_id . ', max=' . $max_revisions . ', current=' . $current_count );
+
 		if ( $max_revisions <= 0 ) {
+			error_log( '[SMR] Enforce limit: Unlimited revisions allowed' );
 			return; // Unlimited.
+		}
+
+		if ( $current_count <= $max_revisions ) {
+			error_log( '[SMR] Enforce limit: Within limit, no cleanup needed' );
+			return;
 		}
 
 		$excess_ids = RevisionDatabase::get_excess_revisions( $attachment_id, $max_revisions );
 
 		if ( empty( $excess_ids ) ) {
+			error_log( '[SMR] Enforce limit: get_excess_revisions returned empty (unexpected)' );
 			return;
 		}
+
+		error_log( '[SMR] Enforce limit: Deleting ' . count( $excess_ids ) . ' excess revisions: IDs ' . implode( ', ', $excess_ids ) );
 
 		$deleted_ids = array();
 
@@ -222,6 +240,7 @@ class RevisionManager {
 				// Delete database record.
 				RevisionDatabase::delete( $revision_id );
 				$deleted_ids[] = $revision_id;
+				error_log( '[SMR] Enforce limit: Deleted revision ' . $revision_id . ' (v' . $revision->version . ')' );
 			}
 		}
 
@@ -233,7 +252,7 @@ class RevisionManager {
 			 * @param array $deleted_ids   Array of deleted revision IDs.
 			 */
 			do_action( 'smr_revisions_cleaned', $attachment_id, $deleted_ids );
-			error_log( '[SMR] Cleaned ' . count( $deleted_ids ) . ' excess revisions for attachment ' . $attachment_id );
+			error_log( '[SMR] Enforce limit: Cleanup complete, deleted ' . count( $deleted_ids ) . ' revisions' );
 		}
 	}
 
@@ -319,35 +338,43 @@ class RevisionManager {
 			return new \WP_Error( 'permission_denied', __( 'You do not have permission to restore this revision.', 'smart-media-replacement' ) );
 		}
 
-		// Get the revision file.
+		// Get the revision file path and verify it exists BEFORE any modifications.
 		$revision_file = RevisionStorage::get_full_path( $revision->file_path );
 
+		error_log( '[SMR] Restore: Checking revision file: ' . $revision_file );
+
 		if ( ! file_exists( $revision_file ) ) {
-			return new \WP_Error( 'file_not_found', __( 'Revision file not found.', 'smart-media-replacement' ) );
+			error_log( '[SMR] Restore failed: Revision file not found: ' . $revision_file );
+			return new \WP_Error( 'file_not_found', __( 'Revision file not found. The file may have been deleted by retention policy or manually removed.', 'smart-media-replacement' ) );
 		}
 
-		// First, create a revision of the current file before restoring.
+		// Get current file info BEFORE creating the revision (in case it's needed).
+		$current_file  = get_attached_file( $attachment_id );
+		$current_dir   = dirname( $current_file );
+		$original_name = $this->get_original_filename( basename( $current_file ) );
+		$target_path   = path_join( $current_dir, $original_name );
+
+		error_log( '[SMR] Restore: Current file=' . $current_file . ', Target=' . $target_path );
+
+		// Create a revision of the current file before restoring.
 		$restore_comment = $comment ? $comment : sprintf(
 			/* translators: %s: version being restored */
 			__( 'Restored from version %s', 'smart-media-replacement' ),
 			$revision->version
 		);
 
-		$this->create_revision_before_replace(
-			$attachment_id,
-			array(
-				'version_type' => 'minor',
-				'comment'      => $restore_comment,
-			)
-		);
-
-		// Get current file info.
-		$current_file  = get_attached_file( $attachment_id );
-		$current_dir   = dirname( $current_file );
-		$original_name = $this->get_original_filename( basename( $current_file ) );
-
-		// Determine target path.
-		$target_path = path_join( $current_dir, $original_name );
+		// Only create a revision if the current file exists.
+		if ( file_exists( $current_file ) || ( $original_name !== basename( $current_file ) && file_exists( path_join( $current_dir, $original_name ) ) ) ) {
+			$this->create_revision_before_replace(
+				$attachment_id,
+				array(
+					'version_type' => 'minor',
+					'comment'      => $restore_comment,
+				)
+			);
+		} else {
+			error_log( '[SMR] Restore: Current file does not exist, skipping pre-restore revision' );
+		}
 
 		// Delete old files.
 		$this->delete_attachment_files( $attachment_id );
@@ -357,7 +384,10 @@ class RevisionManager {
 		WP_Filesystem();
 		global $wp_filesystem;
 
+		error_log( '[SMR] Restore: Copying ' . $revision_file . ' to ' . $target_path );
+
 		if ( ! $wp_filesystem->copy( $revision_file, $target_path, true ) ) {
+			error_log( '[SMR] Restore failed: Could not copy file' );
 			return new \WP_Error( 'copy_failed', __( 'Failed to restore revision file.', 'smart-media-replacement' ) );
 		}
 
@@ -444,7 +474,8 @@ class RevisionManager {
 		}
 
 		$file_path = RevisionStorage::get_full_path( $revision->file_path );
-		$filename  = $revision->version . '-' . basename( $revision->file_path );
+		// The file_path already contains the version prefix, so just use the basename.
+		$filename  = basename( $revision->file_path );
 
 		RevisionStorage::serve_download( $file_path, $filename );
 	}
@@ -543,6 +574,31 @@ class RevisionManager {
 			return $matches[1] . $matches[2];
 		}
 		return $filename;
+	}
+
+	/**
+	 * Check if revisions are enabled for an attachment based on file type setting.
+	 *
+	 * @param int $attachment_id The attachment ID.
+	 * @return bool Whether revisions are enabled for this attachment.
+	 */
+	private function is_revision_enabled_for_attachment( int $attachment_id ): bool {
+		$file_type_setting = get_option( 'smr_revision_file_types', 'documents' );
+
+		// If 'all', revisions are always enabled.
+		if ( 'all' === $file_type_setting ) {
+			return true;
+		}
+
+		$is_image = wp_attachment_is_image( $attachment_id );
+
+		// If 'images', only enable for images.
+		if ( 'images' === $file_type_setting ) {
+			return $is_image;
+		}
+
+		// Default 'documents' - enable for non-images (PDFs, docs, etc.).
+		return ! $is_image;
 	}
 
 	/**

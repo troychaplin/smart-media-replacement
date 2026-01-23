@@ -266,6 +266,11 @@ document.addEventListener('DOMContentLoaded', function () {
 		const revisionData = window.smrRevisionData || {};
 		const requireComment = revisionData.requireComment || false;
 		const defaultVersion = revisionData.defaultVersion || 'minor';
+		const maxRevisions = window.smartMediaReplacementData?.maxRevisions || 10;
+
+		// Get revision count from button data attribute
+		const revisionCount = button ? parseInt(button.getAttribute('data-revision-count') || '0', 10) : 0;
+		const isAtLimit = maxRevisions > 0 && revisionCount >= maxRevisions;
 
 		// Create modal overlay
 		const overlay = document.createElement('div');
@@ -279,8 +284,20 @@ document.addEventListener('DOMContentLoaded', function () {
 		modal.style.cssText =
 			'background:#fff;padding:24px;border-radius:4px;max-width:500px;width:90%;box-shadow:0 5px 20px rgba(0,0,0,0.3);';
 
+		// Create warning message if at limit
+		const warningHtml = isAtLimit
+			? `<div style="background:#fcf0f1;border-left:4px solid #d63638;padding:12px;margin-bottom:16px;">
+				<p style="margin:0;color:#1d2327;">
+					<strong>${__('Notice:', 'smart-media-replacement')}</strong>
+					${__('This item has reached the maximum revisions allowed. Adding an additional revision will cause the oldest revision to be deleted.', 'smart-media-replacement')}
+				</p>
+			</div>`
+			: '';
+
 		modal.innerHTML = `
 			<h2 style="margin-top:0;margin-bottom:16px;">${__('Replace File', 'smart-media-replacement')}</h2>
+
+			${warningHtml}
 
 			<div style="margin-bottom:16px;">
 				<label style="display:block;margin-bottom:8px;font-weight:600;">${__('Version Type', 'smart-media-replacement')}</label>
@@ -455,6 +472,20 @@ function initRevisionHistory() {
 		}
 	});
 
+	// Handle View Revisions button clicks
+	document.addEventListener('click', function (e) {
+		if (
+			e.target.classList.contains('smr-view-revisions-btn') ||
+			e.target.closest('.smr-view-revisions-btn')
+		) {
+			e.preventDefault();
+			const button = e.target.classList.contains('smr-view-revisions-btn')
+				? e.target
+				: e.target.closest('.smr-view-revisions-btn');
+			handleViewRevisionsClick(button);
+		}
+	});
+
 	// Initialize comparison selects
 	const compareLeft = document.getElementById('smr-compare-left');
 	const compareRight = document.getElementById('smr-compare-right');
@@ -465,6 +496,184 @@ function initRevisionHistory() {
 	}
 
 	console.log('[SMR] Revision history initialized');
+}
+
+/**
+ * Handle View Revisions button click.
+ * @param button
+ */
+function handleViewRevisionsClick(button) {
+	const attachmentId = button.getAttribute('data-attachment-id');
+	if (!attachmentId) {
+		return;
+	}
+
+	showRevisionsModal(attachmentId);
+}
+
+/**
+ * Show the revisions modal with full revision history.
+ * @param attachmentId
+ */
+function showRevisionsModal(attachmentId) {
+	const revisionData = window.smrRevisionData || {};
+	const ajaxUrl = revisionData.ajaxUrl || window.smartMediaReplacementData?.ajaxUrl;
+	const nonce = revisionData.nonce;
+
+	// Create modal overlay
+	const overlay = document.createElement('div');
+	overlay.className = 'smr-modal-overlay smr-revisions-modal-overlay';
+	overlay.style.cssText =
+		'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;';
+
+	// Create modal content
+	const modal = document.createElement('div');
+	modal.className = 'smr-revisions-modal';
+	modal.style.cssText =
+		'background:#fff;padding:24px;border-radius:4px;max-width:700px;width:90%;max-height:80vh;overflow:auto;box-shadow:0 5px 20px rgba(0,0,0,0.3);';
+
+	modal.innerHTML = `
+		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+			<h2 style="margin:0;">${__('Revision History', 'smart-media-replacement')}</h2>
+			<button type="button" class="smr-modal-close" style="background:none;border:none;font-size:24px;cursor:pointer;padding:0;line-height:1;">&times;</button>
+		</div>
+		<div class="smr-revisions-loading" style="text-align:center;padding:32px;">
+			<span class="spinner is-active" style="float:none;"></span>
+			<p>${__('Loading revisions...', 'smart-media-replacement')}</p>
+		</div>
+		<div class="smr-revisions-content" style="display:none;"></div>
+	`;
+
+	overlay.appendChild(modal);
+	document.body.appendChild(overlay);
+
+	// Close on X button click
+	const closeBtn = modal.querySelector('.smr-modal-close');
+	if (closeBtn) {
+		closeBtn.addEventListener('click', function () {
+			overlay.remove();
+		});
+	}
+
+	// Close on overlay click
+	overlay.addEventListener('click', function (e) {
+		if (e.target === overlay) {
+			overlay.remove();
+		}
+	});
+
+	// Close on escape key
+	const escHandler = function (e) {
+		if (e.key === 'Escape') {
+			overlay.remove();
+			document.removeEventListener('keydown', escHandler);
+		}
+	};
+	document.addEventListener('keydown', escHandler);
+
+	// Fetch revisions via AJAX
+	const formData = new FormData();
+	formData.append('action', 'smr_get_revisions');
+	formData.append('nonce', nonce);
+	formData.append('attachment_id', attachmentId);
+
+	fetch(ajaxUrl, {
+		method: 'POST',
+		body: formData,
+		credentials: 'same-origin',
+	})
+		.then(response => response.json())
+		.then(data => {
+			const loadingEl = modal.querySelector('.smr-revisions-loading');
+			const contentEl = modal.querySelector('.smr-revisions-content');
+
+			if (data.success) {
+				loadingEl.style.display = 'none';
+				contentEl.style.display = 'block';
+				contentEl.innerHTML = renderRevisionsContent(data.data, attachmentId);
+
+				// Add event listeners to buttons in the modal
+				contentEl.querySelectorAll('.smr-restore-btn').forEach(btn => {
+					btn.addEventListener('click', function () {
+						handleRestoreClick(this);
+					});
+				});
+			} else {
+				loadingEl.innerHTML = `<p style="color:#d63638;">${data.data || __('Error loading revisions.', 'smart-media-replacement')}</p>`;
+			}
+		})
+		.catch(error => {
+			console.error('[SMR] Error fetching revisions:', error);
+			const loadingEl = modal.querySelector('.smr-revisions-loading');
+			loadingEl.innerHTML = `<p style="color:#d63638;">${__('Error loading revisions.', 'smart-media-replacement')}</p>`;
+		});
+
+	console.log('[SMR] Revisions modal opened for attachment:', attachmentId);
+}
+
+/**
+ * Render the revisions content HTML.
+ * @param data
+ * @param attachmentId
+ */
+function renderRevisionsContent(data, attachmentId) {
+	const revisions = data.revisions || [];
+	const totalStorage = data.total_storage || '0 B';
+	const count = data.count || 0;
+	const revisionData = window.smrRevisionData || {};
+	const downloadNonce = revisionData.downloadNonce;
+	const ajaxUrl = revisionData.ajaxUrl || window.smartMediaReplacementData?.ajaxUrl;
+
+	if (revisions.length === 0) {
+		return `
+			<div style="text-align:center;padding:32px;color:#666;">
+				<p>${__('No revisions yet. Revisions are created when you replace the file.', 'smart-media-replacement')}</p>
+			</div>
+		`;
+	}
+
+	let html = `
+		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #ddd;">
+			<div>
+				<strong>${__('Total Revisions:', 'smart-media-replacement')}</strong> ${count}
+				&nbsp;&nbsp;|&nbsp;&nbsp;
+				<strong>${__('Storage Used:', 'smart-media-replacement')}</strong> ${totalStorage}
+			</div>
+			<a href="${ajaxUrl}?action=smr_download_all_revisions&attachment_id=${attachmentId}&nonce=${downloadNonce}" class="button">
+				${__('Download All', 'smart-media-replacement')}
+			</a>
+		</div>
+		<div class="smr-revisions-list">
+	`;
+
+	revisions.forEach((revision, index) => {
+		const isLatest = index === 0;
+		html += `
+			<div class="smr-revision-item" style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px;margin-bottom:8px;background:${isLatest ? '#f0f6fc' : '#f9f9f9'};border-radius:4px;border:1px solid ${isLatest ? '#2271b1' : '#ddd'};">
+				<div style="flex:1;">
+					<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+						<strong style="font-size:14px;">v${revision.version}</strong>
+						${isLatest ? `<span style="background:#2271b1;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;">${__('Latest', 'smart-media-replacement')}</span>` : ''}
+					</div>
+					<div style="color:#666;font-size:12px;">
+						${revision.created_at} &bull; ${revision.user_name} &bull; ${revision.file_size}
+					</div>
+					${revision.comment ? `<div style="margin-top:4px;font-style:italic;color:#555;">"${revision.comment}"</div>` : ''}
+				</div>
+				<div style="display:flex;gap:8px;">
+					<a href="${ajaxUrl}?action=smr_download_revision&revision_id=${revision.id}&nonce=${downloadNonce}" class="button button-small">
+						${__('Download', 'smart-media-replacement')}
+					</a>
+					<button type="button" class="button button-small smr-restore-btn" data-revision-id="${revision.id}" data-version="${revision.version}">
+						${__('Restore', 'smart-media-replacement')}
+					</button>
+				</div>
+			</div>
+		`;
+	});
+
+	html += '</div>';
+	return html;
 }
 
 /**

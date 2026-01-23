@@ -47,13 +47,17 @@ class ManageMedia {
 			true
 		);
 
+		// Get max revisions setting.
+		$max_revisions = (int) get_option( 'smr_max_revisions', 10 );
+
 		// Localize the script with necessary data.
 		wp_localize_script(
 			'smart-media-replacement-script',
 			'smartMediaReplacementData',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( 'smart_media_replacement_nonce' ),
+				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
+				'nonce'        => wp_create_nonce( 'smart_media_replacement_nonce' ),
+				'maxRevisions' => $max_revisions,
 			)
 		);
 	}
@@ -64,11 +68,32 @@ class ManageMedia {
 	 * @param \WP_Post $post The attachment post object.
 	 */
 	public function smart_media_replacement_submit_button( $post ) {
+		// Check if revisions are enabled for this file type.
+		if ( ! $this->is_revision_enabled_for_attachment( $post->ID ) ) {
+			?>
+			<div class="misc-pub-section">
+				<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+					<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
+				</button>
+			</div>
+			<?php
+			return;
+		}
+
+		$revision_count = RevisionDatabase::get_count( $post->ID );
 		?>
 		<div class="misc-pub-section">
-			<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
-				<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
-			</button>
+			<div style="display: flex; gap: 4px;">
+				<button type="button" class="button button-large smart-media-replacement-button" style="flex: 1; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>" data-revision-count="<?php echo esc_attr( $revision_count ); ?>">
+					<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
+				</button>
+				<button type="button" class="button button-large smr-view-revisions-btn" style="flex: 1; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+					<?php esc_html_e( 'View Revisions', 'smart-media-replacement' ); ?>
+					<?php if ( $revision_count > 0 ) : ?>
+						<span class="smr-revision-count-badge">(<?php echo esc_html( $revision_count ); ?>)</span>
+					<?php endif; ?>
+				</button>
+			</div>
 		</div>
 		<?php
 	}
@@ -87,6 +112,20 @@ class ManageMedia {
 				$post->ID,
 				__( 'Replace', 'smart-media-replacement' )
 			);
+
+			// Add View Revisions link if revisions are enabled for this file type.
+			if ( $this->is_revision_enabled_for_attachment( $post->ID ) ) {
+				$revision_count = RevisionDatabase::get_count( $post->ID );
+				$label          = __( 'Revisions', 'smart-media-replacement' );
+				if ( $revision_count > 0 ) {
+					$label .= ' (' . $revision_count . ')';
+				}
+				$actions['smr_view_revisions'] = sprintf(
+					'<a href="#" class="smr-view-revisions-link smr-view-revisions-btn" data-attachment-id="%d">%s</a>',
+					$post->ID,
+					$label
+				);
+			}
 		}
 		return $actions;
 	}
@@ -344,6 +383,31 @@ class ManageMedia {
 			return $matches[1] . $matches[2];
 		}
 		return $filename;
+	}
+
+	/**
+	 * Check if revisions are enabled for an attachment based on file type setting.
+	 *
+	 * @param int $attachment_id The attachment ID.
+	 * @return bool Whether revisions are enabled for this attachment.
+	 */
+	public function is_revision_enabled_for_attachment( int $attachment_id ): bool {
+		$file_type_setting = get_option( 'smr_revision_file_types', 'documents' );
+
+		// If 'all', revisions are always enabled.
+		if ( 'all' === $file_type_setting ) {
+			return true;
+		}
+
+		$is_image = wp_attachment_is_image( $attachment_id );
+
+		// If 'images', only enable for images.
+		if ( 'images' === $file_type_setting ) {
+			return $is_image;
+		}
+
+		// Default 'documents' - enable for non-images (PDFs, docs, etc.).
+		return ! $is_image;
 	}
 
 	/**

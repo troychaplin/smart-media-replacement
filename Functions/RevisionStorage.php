@@ -354,7 +354,8 @@ class RevisionStorage {
 		foreach ( $revisions as $revision ) {
 			$full_path = self::get_full_path( $revision->file_path );
 			if ( file_exists( $full_path ) ) {
-				$zip_filename = $revision->version . '-' . basename( $full_path );
+				// The file_path already contains the version prefix, so just use the basename.
+				$zip_filename = basename( $full_path );
 				$zip->addFile( $full_path, $zip_filename );
 				++$files_added;
 			}
