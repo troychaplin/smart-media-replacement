@@ -518,16 +518,16 @@ Key log entries to look for in `wp-content/debug.log`:
 
 | Test ID | Test Name | Status | Notes |
 |---------|-----------|--------|-------|
-| 1.1 | Plugin Activation | ⬜ | |
-| 1.2 | Database Table Structure | ⬜ | |
-| 1.3 | Default Settings | ⬜ | |
-| 2.1 | Settings Display | ⬜ | |
-| 2.2 | Settings Save | ⬜ | |
-| 3.1 | Basic Replacement Modal | ⬜ | |
-| 3.2 | First Replacement - Minor | ⬜ | |
-| 3.3 | Second Replacement - Major | ⬜ | |
-| 3.4 | Comment Required | ⬜ | |
-| 3.5 | Validation Errors | ⬜ | |
+| 1.1 | Plugin Activation | ✅ | |
+| 1.2 | Database Table Structure | ✅ | |
+| 1.3 | Default Settings | ✅ | |
+| 2.1 | Settings Display | ✅ | |
+| 2.2 | Settings Save | ✅ | |
+| 3.1 | Basic Replacement Modal | ✅ | |
+| 3.2 | First Replacement - Minor | ✅ | |
+| 3.3 | Second Replacement - Major | ✅ | |
+| 3.4 | Comment Required | ✅ | |
+| 3.5 | Validation Errors | ✅ | |
 | 4.1 | History Display | ⬜ | |
 | 4.2 | Download Single | ⬜ | |
 | 4.3 | Download All (ZIP) | ⬜ | |
