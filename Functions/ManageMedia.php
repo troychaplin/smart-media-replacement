@@ -162,8 +162,6 @@ class ManageMedia {
 			wp_send_json_error( __( 'A comment is required when replacing files.', 'smart-media-replacement' ) );
 		}
 
-		error_log( '[SMR] Replacement request: attachment=' . $attachment_id . ', version_type=' . $version_type . ', comment=' . substr( $comment, 0, 50 ) );
-
 		// Validate and sanitize file upload components.
 		$file_name  = isset( $_FILES['replacement_file']['name'] ) ? sanitize_file_name( $_FILES['replacement_file']['name'] ) : '';
 		$file_type  = isset( $_FILES['replacement_file']['type'] ) ? sanitize_mime_type( $_FILES['replacement_file']['type'] ) : '';
@@ -392,6 +390,11 @@ class ManageMedia {
 	 * @return bool Whether revisions are enabled for this attachment.
 	 */
 	public function is_revision_enabled_for_attachment( int $attachment_id ): bool {
+		// Check if revisions are globally enabled.
+		if ( ! get_option( 'smr_enable_revisions', true ) ) {
+			return false;
+		}
+
 		$file_type_setting = get_option( 'smr_revision_file_types', 'documents' );
 
 		// If 'all', revisions are always enabled.

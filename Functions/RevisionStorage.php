@@ -5,6 +5,9 @@
  * @package Smart_Media_Replacement
  */
 
+// phpcs:disable WordPress.Files.FileName.NotHyphenatedLowercase
+// phpcs:disable WordPress.Files.FileName.InvalidClassFileName
+
 namespace Smart_Media_Replacement;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -95,16 +98,12 @@ class RevisionStorage {
 		if ( ! file_exists( $dir ) ) {
 			$created = wp_mkdir_p( $dir );
 			if ( $created ) {
-				error_log( '[SMR] Created revision directory: ' . $dir );
-
 				// Add index.php for security.
 				$index_file = trailingslashit( $dir ) . 'index.php';
 				if ( ! file_exists( $index_file ) ) {
 					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 					file_put_contents( $index_file, '<?php // Silence is golden.' );
 				}
-			} else {
-				error_log( '[SMR] Failed to create revision directory: ' . $dir );
 			}
 			return $created;
 		}
@@ -123,7 +122,6 @@ class RevisionStorage {
 	 */
 	public static function store_revision( int $attachment_id, string $source_file, string $version, string $filename ) {
 		if ( ! file_exists( $source_file ) ) {
-			error_log( '[SMR] Source file does not exist: ' . $source_file );
 			return false;
 		}
 
@@ -144,7 +142,6 @@ class RevisionStorage {
 
 		if ( $copied ) {
 			$file_size = filesize( $target_path );
-			error_log( '[SMR] Stored revision file: ' . $target_path . ' (' . size_format( $file_size ) . ')' );
 
 			return array(
 				'path' => self::get_relative_path( $attachment_id, $version, $filename ),
@@ -152,7 +149,6 @@ class RevisionStorage {
 			);
 		}
 
-		error_log( '[SMR] Failed to store revision file: ' . $target_path );
 		return false;
 	}
 
@@ -168,11 +164,9 @@ class RevisionStorage {
 
 		if ( file_exists( $full_path ) ) {
 			$deleted = wp_delete_file( $full_path );
-			if ( $deleted !== false ) {
-				error_log( '[SMR] Deleted revision file: ' . $full_path );
+			if ( false !== $deleted ) {
 				return true;
 			}
-			error_log( '[SMR] Failed to delete revision file: ' . $full_path );
 			return false;
 		}
 
@@ -199,12 +193,6 @@ class RevisionStorage {
 
 		$deleted = $wp_filesystem->rmdir( $dir, true );
 
-		if ( $deleted ) {
-			error_log( '[SMR] Deleted all revision files for attachment: ' . $attachment_id );
-		} else {
-			error_log( '[SMR] Failed to delete revision directory: ' . $dir );
-		}
-
 		return $deleted;
 	}
 
@@ -226,12 +214,6 @@ class RevisionStorage {
 		global $wp_filesystem;
 
 		$deleted = $wp_filesystem->rmdir( $base_dir, true );
-
-		if ( $deleted ) {
-			error_log( '[SMR] Deleted all revision files from: ' . $base_dir );
-		} else {
-			error_log( '[SMR] Failed to delete base revision directory: ' . $base_dir );
-		}
 
 		return $deleted;
 	}
@@ -330,7 +312,6 @@ class RevisionStorage {
 	 */
 	public static function create_zip( int $attachment_id, array $revisions ) {
 		if ( ! class_exists( 'ZipArchive' ) ) {
-			error_log( '[SMR] ZipArchive class not available' );
 			return false;
 		}
 
@@ -346,7 +327,6 @@ class RevisionStorage {
 
 		$zip = new \ZipArchive();
 		if ( $zip->open( $zip_path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
-			error_log( '[SMR] Failed to create ZIP archive: ' . $zip_path );
 			return false;
 		}
 
@@ -365,11 +345,9 @@ class RevisionStorage {
 
 		if ( 0 === $files_added ) {
 			wp_delete_file( $zip_path );
-			error_log( '[SMR] No files added to ZIP archive' );
 			return false;
 		}
 
-		error_log( '[SMR] Created ZIP archive: ' . $zip_path . ' (' . $files_added . ' files)' );
 		return $zip_path;
 	}
 

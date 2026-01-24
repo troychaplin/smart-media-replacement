@@ -5,6 +5,9 @@
  * @package Smart_Media_Replacement
  */
 
+// phpcs:disable WordPress.Files.FileName.NotHyphenatedLowercase
+// phpcs:disable WordPress.Files.FileName.InvalidClassFileName
+
 namespace Smart_Media_Replacement;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -31,7 +34,7 @@ class RevisionUI {
 	 *
 	 * @param string $hook Current admin page hook.
 	 */
-	public function enqueue_scripts( string $hook ): void {
+	public function enqueue_scripts( string $hook ): void { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 		$screen = get_current_screen();
 
 		// Only load on media screens.
@@ -59,6 +62,7 @@ class RevisionUI {
 				'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
 				'nonce'           => wp_create_nonce( 'smr_revision_nonce' ),
 				'downloadNonce'   => wp_create_nonce( 'smr_download_nonce' ),
+				'enableRevisions' => (bool) get_option( 'smr_enable_revisions', true ),
 				'requireComment'  => (bool) get_option( 'smr_require_comment', false ),
 				'defaultVersion'  => get_option( 'smr_default_version_type', 'minor' ),
 				'strings'         => array(

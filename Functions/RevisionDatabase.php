@@ -5,6 +5,10 @@
  * @package Smart_Media_Replacement
  */
 
+// phpcs:disable WordPress.Files.FileName.NotHyphenatedLowercase
+// phpcs:disable WordPress.Files.FileName.InvalidClassFileName
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
 namespace Smart_Media_Replacement;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -75,14 +79,11 @@ class RevisionDatabase {
 		dbDelta( $sql );
 
 		// Verify table exists.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
 
 		if ( $table_exists ) {
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
-			// Log for debugging.
-			error_log( '[SMR] Revisions table created successfully: ' . $table_name );
-		} else {
-			error_log( '[SMR] Failed to create revisions table: ' . $table_name );
 		}
 
 		return $table_exists;
@@ -97,16 +98,14 @@ class RevisionDatabase {
 		global $wpdb;
 
 		$table_name = self::get_table_name();
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$result = $wpdb->query( "DROP TABLE IF EXISTS {$table_name}" );
 
 		if ( false !== $result ) {
 			delete_option( self::DB_VERSION_OPTION );
-			error_log( '[SMR] Revisions table dropped: ' . $table_name );
 			return true;
 		}
 
-		error_log( '[SMR] Failed to drop revisions table: ' . $table_name );
 		return false;
 	}
 
@@ -118,6 +117,7 @@ class RevisionDatabase {
 	public static function table_exists(): bool {
 		global $wpdb;
 		$table_name = self::get_table_name();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		return $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
 	}
 
@@ -169,12 +169,9 @@ class RevisionDatabase {
 		);
 
 		if ( $result ) {
-			$revision_id = $wpdb->insert_id;
-			error_log( '[SMR] Revision inserted: ID=' . $revision_id . ', Attachment=' . $data['attachment_id'] . ', Version=' . $data['version'] );
-			return $revision_id;
+			return $wpdb->insert_id;
 		}
 
-		error_log( '[SMR] Failed to insert revision for attachment ' . $data['attachment_id'] . ': ' . $wpdb->last_error );
 		return false;
 	}
 
@@ -190,7 +187,7 @@ class RevisionDatabase {
 		$table_name = self::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM {$table_name} WHERE id = %d AND blog_id = %d",
@@ -215,6 +212,7 @@ class RevisionDatabase {
 		$blog_id    = get_current_blog_id();
 		$order      = 'ASC' === strtoupper( $order ) ? 'ASC' : 'DESC';
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$sql = $wpdb->prepare(
 			"SELECT * FROM {$table_name} WHERE blog_id = %d AND attachment_id = %d ORDER BY version_major {$order}, version_minor {$order}",
 			$blog_id,
@@ -241,7 +239,7 @@ class RevisionDatabase {
 		$table_name = self::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM {$table_name} WHERE blog_id = %d AND attachment_id = %d ORDER BY version_major DESC, version_minor DESC LIMIT 1",
@@ -263,7 +261,7 @@ class RevisionDatabase {
 		$table_name = self::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM {$table_name} WHERE blog_id = %d AND attachment_id = %d",
@@ -295,10 +293,6 @@ class RevisionDatabase {
 			array( '%d', '%d' )
 		);
 
-		if ( $result ) {
-			error_log( '[SMR] Revision deleted: ID=' . $revision_id );
-		}
-
 		return (bool) $result;
 	}
 
@@ -324,9 +318,7 @@ class RevisionDatabase {
 			array( '%d', '%d' )
 		);
 
-		$count = $result ? $result : 0;
-		error_log( '[SMR] Deleted ' . $count . ' revisions for attachment ' . $attachment_id );
-		return $count;
+		return $result ? $result : 0;
 	}
 
 	/**
@@ -347,9 +339,7 @@ class RevisionDatabase {
 			array( '%d' )
 		);
 
-		$count = $result ? $result : 0;
-		error_log( '[SMR] Deleted ' . $count . ' revisions for blog ' . $blog_id );
-		return $count;
+		return $result ? $result : 0;
 	}
 
 	/**
@@ -375,7 +365,7 @@ class RevisionDatabase {
 		$excess = $count - $max_revisions;
 
 		// Get oldest revisions to delete.
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$revisions = $wpdb->get_col(
 			$wpdb->prepare(
 				"SELECT id FROM {$table_name} WHERE blog_id = %d AND attachment_id = %d ORDER BY version_major ASC, version_minor ASC LIMIT %d",
@@ -401,7 +391,7 @@ class RevisionDatabase {
 		$blog_id    = get_current_blog_id();
 		$cutoff     = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM {$table_name} WHERE blog_id = %d AND created_at < %s",
@@ -423,7 +413,7 @@ class RevisionDatabase {
 		$table_name = self::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT SUM(file_size) FROM {$table_name} WHERE blog_id = %d AND attachment_id = %d",
@@ -444,7 +434,7 @@ class RevisionDatabase {
 		$table_name = self::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT SUM(file_size) FROM {$table_name} WHERE blog_id = %d",

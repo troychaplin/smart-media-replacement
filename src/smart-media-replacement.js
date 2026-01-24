@@ -189,12 +189,6 @@ document.addEventListener('DOMContentLoaded', function () {
 		formData.append('version_type', versionType || 'minor');
 		formData.append('comment', comment || '');
 
-		console.log('[SMR] Performing replacement:', {
-			attachmentId,
-			versionType,
-			comment: comment?.substring(0, 50),
-		});
-
 		// Send AJAX request
 		fetch(window.smartMediaReplacementData.ajaxUrl, {
 			method: 'POST',
@@ -264,13 +258,16 @@ document.addEventListener('DOMContentLoaded', function () {
 	function showReplacementModal(attachmentId, button) {
 		// Get settings from localized data
 		const revisionData = window.smrRevisionData || {};
-		const requireComment = revisionData.requireComment || false;
+		const enableRevisions = revisionData.enableRevisions !== false;
+		const requireComment = enableRevisions && (revisionData.requireComment || false);
 		const defaultVersion = revisionData.defaultVersion || 'minor';
 		const maxRevisions = window.smartMediaReplacementData?.maxRevisions || 10;
 
 		// Get revision count from button data attribute
-		const revisionCount = button ? parseInt(button.getAttribute('data-revision-count') || '0', 10) : 0;
-		const isAtLimit = maxRevisions > 0 && revisionCount >= maxRevisions;
+		const revisionCount = button
+			? parseInt(button.getAttribute('data-revision-count') || '0', 10)
+			: 0;
+		const isAtLimit = enableRevisions && maxRevisions > 0 && revisionCount >= maxRevisions;
 
 		// Create modal overlay
 		const overlay = document.createElement('div');
@@ -294,12 +291,9 @@ document.addEventListener('DOMContentLoaded', function () {
 			</div>`
 			: '';
 
-		modal.innerHTML = `
-			<h2 style="margin-top:0;margin-bottom:16px;">${__('Replace File', 'smart-media-replacement')}</h2>
-
-			${warningHtml}
-
-			<div style="margin-bottom:16px;">
+		// Build version type HTML only if revisions are enabled
+		const versionTypeHtml = enableRevisions
+			? `<div style="margin-bottom:16px;">
 				<label style="display:block;margin-bottom:8px;font-weight:600;">${__('Version Type', 'smart-media-replacement')}</label>
 				<div style="display:flex;gap:16px;">
 					<label style="display:flex;align-items:center;gap:4px;">
@@ -311,16 +305,29 @@ document.addEventListener('DOMContentLoaded', function () {
 						${__('Major (1.0 → 2.0)', 'smart-media-replacement')}
 					</label>
 				</div>
-			</div>
+			</div>`
+			: '<input type="hidden" name="smr_version_type" value="minor">';
 
-			<div style="margin-bottom:16px;">
+		// Build comment HTML only if revisions are enabled
+		const commentHtml = enableRevisions
+			? `<div style="margin-bottom:16px;">
 				<label for="smr_comment" style="display:block;margin-bottom:8px;font-weight:600;">
 					${__('Comment', 'smart-media-replacement')}
 					${requireComment ? '<span style="color:#d63638;">*</span>' : ''}
 				</label>
 				<textarea id="smr_comment" rows="3" style="width:100%;resize:vertical;" placeholder="${__('Describe the changes…', 'smart-media-replacement')}"></textarea>
 				${requireComment ? `<p style="color:#666;font-size:12px;margin-top:4px;">${__('A comment is required.', 'smart-media-replacement')}</p>` : ''}
-			</div>
+			</div>`
+			: '';
+
+		modal.innerHTML = `
+			<h2 style="margin-top:0;margin-bottom:16px;">${__('Replace File', 'smart-media-replacement')}</h2>
+
+			${warningHtml}
+
+			${versionTypeHtml}
+
+			${commentHtml}
 
 			<div style="margin-bottom:16px;">
 				<label style="display:block;margin-bottom:8px;font-weight:600;">${__('Select File', 'smart-media-replacement')}</label>
@@ -345,16 +352,19 @@ document.addEventListener('DOMContentLoaded', function () {
 		// Enable upload button when file is selected
 		fileInput.addEventListener('change', function () {
 			const hasFile = this.files.length > 0;
-			const hasComment = !requireComment || commentInput.value.trim().length > 0;
+			const hasComment =
+				!requireComment || (commentInput && commentInput.value.trim().length > 0);
 			uploadBtn.disabled = !(hasFile && hasComment);
 		});
 
-		// Check comment requirement
-		commentInput.addEventListener('input', function () {
-			const hasFile = fileInput.files.length > 0;
-			const hasComment = !requireComment || this.value.trim().length > 0;
-			uploadBtn.disabled = !(hasFile && hasComment);
-		});
+		// Check comment requirement (only if comment field exists)
+		if (commentInput) {
+			commentInput.addEventListener('input', function () {
+				const hasFile = fileInput.files.length > 0;
+				const hasComment = !requireComment || this.value.trim().length > 0;
+				uploadBtn.disabled = !(hasFile && hasComment);
+			});
+		}
 
 		// Handle cancel
 		cancelBtn.addEventListener('click', function () {
@@ -371,12 +381,12 @@ document.addEventListener('DOMContentLoaded', function () {
 		// Handle upload
 		uploadBtn.addEventListener('click', function () {
 			const file = fileInput.files[0];
-			const versionType = modal.querySelector('input[name="smr_version_type"]:checked').value;
-			const comment = commentInput.value.trim();
-
 			if (!file) {
 				return;
 			}
+
+			const versionType = modal.querySelector('input[name="smr_version_type"]:checked').value;
+			const comment = commentInput ? commentInput.value.trim() : '';
 
 			if (requireComment && !comment) {
 				showErrorMessage(
@@ -410,8 +420,6 @@ document.addEventListener('DOMContentLoaded', function () {
 				document.removeEventListener('keydown', escHandler);
 			}
 		});
-
-		console.log('[SMR] Replacement modal opened for attachment:', attachmentId);
 	}
 
 	// Initialize buttons on page load
@@ -451,7 +459,7 @@ function initRevisionHistory() {
 	// Handle compare button clicks
 	document.addEventListener('click', function (e) {
 		if (e.target.classList.contains('smr-compare-btn')) {
-			handleCompareClick(e.target);
+			handleCompareClick();
 		}
 	});
 
@@ -494,13 +502,12 @@ function initRevisionHistory() {
 		compareLeft.addEventListener('change', updateComparisonImages);
 		compareRight.addEventListener('change', updateComparisonImages);
 	}
-
-	console.log('[SMR] Revision history initialized');
 }
 
 /**
  * Handle View Revisions button click.
- * @param button
+ *
+ * @param {HTMLElement} button The button element that was clicked.
  */
 function handleViewRevisionsClick(button) {
 	const attachmentId = button.getAttribute('data-attachment-id');
@@ -513,7 +520,8 @@ function handleViewRevisionsClick(button) {
 
 /**
  * Show the revisions modal with full revision history.
- * @param attachmentId
+ *
+ * @param {string} attachmentId The attachment ID.
  */
 function showRevisionsModal(attachmentId) {
 	const revisionData = window.smrRevisionData || {};
@@ -539,7 +547,7 @@ function showRevisionsModal(attachmentId) {
 		</div>
 		<div class="smr-revisions-loading" style="text-align:center;padding:32px;">
 			<span class="spinner is-active" style="float:none;"></span>
-			<p>${__('Loading revisions...', 'smart-media-replacement')}</p>
+			<p>${__('Loading revisions…', 'smart-media-replacement')}</p>
 		</div>
 		<div class="smr-revisions-content" style="display:none;"></div>
 	`;
@@ -602,19 +610,18 @@ function showRevisionsModal(attachmentId) {
 				loadingEl.innerHTML = `<p style="color:#d63638;">${data.data || __('Error loading revisions.', 'smart-media-replacement')}</p>`;
 			}
 		})
-		.catch(error => {
-			console.error('[SMR] Error fetching revisions:', error);
+		.catch(() => {
 			const loadingEl = modal.querySelector('.smr-revisions-loading');
 			loadingEl.innerHTML = `<p style="color:#d63638;">${__('Error loading revisions.', 'smart-media-replacement')}</p>`;
 		});
-
-	console.log('[SMR] Revisions modal opened for attachment:', attachmentId);
 }
 
 /**
  * Render the revisions content HTML.
- * @param data
- * @param attachmentId
+ *
+ * @param {Object} data         The revision data from AJAX.
+ * @param {string} attachmentId The attachment ID.
+ * @return {string} HTML content for the revisions list.
  */
 function renderRevisionsContent(data, attachmentId) {
 	const revisions = data.revisions || [];
@@ -678,13 +685,17 @@ function renderRevisionsContent(data, attachmentId) {
 
 /**
  * Handle restore button click.
- * @param button
+ *
+ * @param {HTMLElement} button The restore button element.
  */
 function handleRestoreClick(button) {
 	const revisionData = window.smrRevisionData || {};
 	const strings = revisionData.strings || {};
 
-	if (!confirm(strings.confirmRestore || 'Are you sure you want to restore this revision?')) {
+	if (
+		// eslint-disable-next-line no-alert
+		!window.confirm(strings.confirmRestore || 'Are you sure you want to restore this revision?')
+	) {
 		return;
 	}
 
@@ -709,17 +720,21 @@ function handleRestoreClick(button) {
 		.then(data => {
 			if (data.success) {
 				// Show success and reload
-				alert(strings.restoreSuccess || 'Revision restored successfully. Refreshing...');
+				// eslint-disable-next-line no-alert
+				window.alert(
+					strings.restoreSuccess || 'Revision restored successfully. Refreshing...'
+				);
 				window.location.reload();
 			} else {
-				alert(data.data || 'Error restoring revision.');
+				// eslint-disable-next-line no-alert
+				window.alert(data.data || 'Error restoring revision.');
 				button.disabled = false;
 				button.textContent = 'Restore';
 			}
 		})
 		.catch(error => {
-			console.error('[SMR] Restore error:', error);
-			alert('Error restoring revision: ' + error.message);
+			// eslint-disable-next-line no-alert
+			window.alert('Error restoring revision: ' + error.message);
 			button.disabled = false;
 			button.textContent = 'Restore';
 		});
@@ -727,23 +742,21 @@ function handleRestoreClick(button) {
 
 /**
  * Handle compare button click.
- * @param button
  */
-function handleCompareClick(button) {
+function handleCompareClick() {
 	const modal = document.getElementById('smr-comparison-modal');
 	if (modal) {
 		modal.style.display = 'flex';
 		updateComparisonImages();
-		console.log('[SMR] Comparison modal opened');
 	}
 }
 
 /**
  * Handle preview button click.
- * @param button
+ *
+ * @param {HTMLElement} button The preview button element.
  */
 function handlePreviewClick(button) {
-	const revisionData = window.smrRevisionData || {};
 	const filePath = button.getAttribute('data-file-path');
 
 	if (!filePath) {
@@ -769,8 +782,6 @@ function handlePreviewClick(button) {
 	overlay.addEventListener('click', function () {
 		overlay.remove();
 	});
-
-	console.log('[SMR] Preview opened:', imageUrl);
 }
 
 /**
@@ -815,6 +826,4 @@ function updateComparisonImages() {
 	if (rightLabel) {
 		rightLabel.textContent = rightOption.textContent.trim();
 	}
-
-	console.log('[SMR] Comparison images updated:', { left: leftPath, right: rightPath });
 }

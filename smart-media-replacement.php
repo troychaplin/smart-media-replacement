@@ -30,13 +30,14 @@ require_once SMART_MEDIA_REPLACEMENT_PLUGIN_PATH . 'vendor/autoload.php';
  *
  * @param bool $network_wide Whether plugin is being activated network-wide.
  */
-function smart_media_replacement_activate( $network_wide ) {
-	error_log( '[SMR] Plugin activation started. Network-wide: ' . ( $network_wide ? 'yes' : 'no' ) );
-
+function smart_media_replacement_activate( $network_wide ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 	// Create database table.
 	\Smart_Media_Replacement\RevisionDatabase::create_table();
 
 	// Set default options if not already set.
+	if ( false === get_option( 'smr_enable_revisions' ) ) {
+		add_option( 'smr_enable_revisions', true );
+	}
 	if ( false === get_option( 'smr_max_revisions' ) ) {
 		add_option( 'smr_max_revisions', 10 );
 	}
@@ -60,8 +61,6 @@ function smart_media_replacement_activate( $network_wide ) {
 	if ( ! wp_next_scheduled( 'smr_cleanup_revisions' ) ) {
 		wp_schedule_event( time(), 'daily', 'smr_cleanup_revisions' );
 	}
-
-	error_log( '[SMR] Plugin activation completed' );
 }
 register_activation_hook( __FILE__, 'smart_media_replacement_activate' );
 
@@ -70,9 +69,7 @@ register_activation_hook( __FILE__, 'smart_media_replacement_activate' );
  *
  * @param bool $network_wide Whether plugin is being deactivated network-wide.
  */
-function smart_media_replacement_deactivate( $network_wide ) {
-	error_log( '[SMR] Plugin deactivation started. Network-wide: ' . ( $network_wide ? 'yes' : 'no' ) );
-
+function smart_media_replacement_deactivate( $network_wide ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
 	// Clear scheduled cron.
 	$timestamp = wp_next_scheduled( 'smr_cleanup_revisions' );
 	if ( $timestamp ) {
@@ -81,17 +78,13 @@ function smart_media_replacement_deactivate( $network_wide ) {
 
 	// Check if we should delete files.
 	if ( get_option( 'smr_delete_files_on_deactivate', false ) ) {
-		error_log( '[SMR] Deleting revision files on deactivation' );
 		\Smart_Media_Replacement\RevisionStorage::delete_all_revisions();
 	}
 
 	// Check if we should delete database data.
 	if ( get_option( 'smr_delete_data_on_deactivate', false ) ) {
-		error_log( '[SMR] Deleting database data on deactivation' );
 		\Smart_Media_Replacement\RevisionDatabase::drop_table();
 	}
-
-	error_log( '[SMR] Plugin deactivation completed' );
 }
 register_deactivation_hook( __FILE__, 'smart_media_replacement_deactivate' );
 
@@ -105,14 +98,13 @@ function smart_media_replacement_new_site( $new_site ) {
 		switch_to_blog( $new_site->blog_id );
 
 		// Set default options for new site.
+		add_option( 'smr_enable_revisions', true );
 		add_option( 'smr_max_revisions', 10 );
 		add_option( 'smr_retention_days', 0 );
 		add_option( 'smr_default_version_type', 'minor' );
 		add_option( 'smr_require_comment', false );
 		add_option( 'smr_delete_files_on_deactivate', false );
 		add_option( 'smr_delete_data_on_deactivate', false );
-
-		error_log( '[SMR] Initialized settings for new site: ' . $new_site->blog_id );
 
 		restore_current_blog();
 	}
@@ -130,8 +122,6 @@ function smart_media_replacement_delete_site( $old_site ) {
 
 	\Smart_Media_Replacement\RevisionStorage::delete_all_revisions();
 	\Smart_Media_Replacement\RevisionDatabase::delete_by_blog();
-
-	error_log( '[SMR] Cleaned up revisions for deleted site: ' . $old_site->blog_id );
 
 	restore_current_blog();
 }

@@ -5,6 +5,10 @@
  * @package Smart_Media_Replacement
  */
 
+// phpcs:disable WordPress.Files.FileName.NotHyphenatedLowercase
+// phpcs:disable WordPress.Files.FileName.InvalidClassFileName
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
 namespace Smart_Media_Replacement;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -45,13 +49,46 @@ class SettingsPage {
 	 */
 	public function register_settings(): void {
 		// Register settings.
+		register_setting(
+			'smr_settings',
+			'smr_enable_revisions',
+			array(
+				'type'              => 'boolean',
+				'default'           => true,
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
 		register_setting( 'smr_settings', 'smr_max_revisions', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'smr_settings', 'smr_retention_days', array( 'sanitize_callback' => 'absint' ) );
 		register_setting( 'smr_settings', 'smr_default_version_type', array( 'sanitize_callback' => 'sanitize_text_field' ) );
-		register_setting( 'smr_settings', 'smr_require_comment', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
+		register_setting(
+			'smr_settings',
+			'smr_require_comment',
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
 		register_setting( 'smr_settings', 'smr_revision_file_types', array( 'sanitize_callback' => 'sanitize_text_field' ) );
-		register_setting( 'smr_settings', 'smr_delete_files_on_deactivate', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
-		register_setting( 'smr_settings', 'smr_delete_data_on_deactivate', array( 'sanitize_callback' => array( $this, 'sanitize_checkbox' ) ) );
+		register_setting(
+			'smr_settings',
+			'smr_delete_files_on_deactivate',
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
+		register_setting(
+			'smr_settings',
+			'smr_delete_data_on_deactivate',
+			array(
+				'type'              => 'boolean',
+				'default'           => false,
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
 
 		// Revision Settings Section.
 		add_settings_section(
@@ -59,6 +96,14 @@ class SettingsPage {
 			__( 'Revision Settings', 'smart-media-replacement' ),
 			array( $this, 'render_revision_section' ),
 			'smr-settings'
+		);
+
+		add_settings_field(
+			'smr_enable_revisions',
+			__( 'Enable Revisions', 'smart-media-replacement' ),
+			array( $this, 'render_enable_revisions_field' ),
+			'smr-settings',
+			'smr_revision_settings'
 		);
 
 		add_settings_field(
@@ -169,6 +214,37 @@ class SettingsPage {
 				?>
 			</form>
 		</div>
+		<script>
+		(function() {
+			var enableCheckbox = document.querySelector('input[name="smr_enable_revisions"][type="checkbox"]');
+			if (!enableCheckbox) return;
+
+			var dependentFields = [
+				'smr_revision_file_types',
+				'smr_max_revisions',
+				'smr_retention_days',
+				'smr_default_version_type',
+				'smr_require_comment'
+			];
+
+			function toggleFields() {
+				var isEnabled = enableCheckbox.checked;
+				dependentFields.forEach(function(fieldName) {
+					var field = document.querySelector('[name="' + fieldName + '"]');
+					if (field) {
+						var row = field.closest('tr');
+						if (row) {
+							row.style.opacity = isEnabled ? '1' : '0.5';
+							row.style.pointerEvents = isEnabled ? 'auto' : 'none';
+						}
+					}
+				});
+			}
+
+			enableCheckbox.addEventListener('change', toggleFields);
+			toggleFields();
+		})();
+		</script>
 		<?php
 	}
 
@@ -191,9 +267,9 @@ class SettingsPage {
 	 * Render storage information section.
 	 */
 	public function render_storage_section(): void {
-		$total_storage   = RevisionDatabase::get_total_storage();
-		$revision_count  = $this->get_total_revision_count();
-		$table_exists    = RevisionDatabase::table_exists();
+		$total_storage  = RevisionDatabase::get_total_storage();
+		$revision_count = $this->get_total_revision_count();
+		$table_exists   = RevisionDatabase::table_exists();
 
 		echo '<table class="form-table" role="presentation">';
 		echo '<tbody>';
@@ -221,8 +297,21 @@ class SettingsPage {
 
 		echo '</tbody>';
 		echo '</table>';
+	}
 
-		error_log( '[SMR] Settings page: revision_count=' . $revision_count . ', storage=' . size_format( $total_storage ) );
+	/**
+	 * Render enable revisions field.
+	 */
+	public function render_enable_revisions_field(): void {
+		$value = get_option( 'smr_enable_revisions', true );
+		?>
+		<input type="hidden" name="smr_enable_revisions" value="0">
+		<label>
+			<input type="checkbox" name="smr_enable_revisions" value="1" <?php checked( $value ); ?>>
+			<?php esc_html_e( 'Enable revision tracking for media files', 'smart-media-replacement' ); ?>
+		</label>
+		<p class="description"><?php esc_html_e( 'When disabled, replacing files will not create revision history. Existing revisions will be preserved.', 'smart-media-replacement' ); ?></p>
+		<?php
 	}
 
 	/**
@@ -283,6 +372,7 @@ class SettingsPage {
 	public function render_require_comment_field(): void {
 		$value = get_option( 'smr_require_comment', false );
 		?>
+		<input type="hidden" name="smr_require_comment" value="0">
 		<label>
 			<input type="checkbox" name="smr_require_comment" value="1" <?php checked( $value ); ?>>
 			<?php esc_html_e( 'Require a comment when replacing files', 'smart-media-replacement' ); ?>
@@ -297,6 +387,7 @@ class SettingsPage {
 	public function render_delete_files_field(): void {
 		$value = get_option( 'smr_delete_files_on_deactivate', false );
 		?>
+		<input type="hidden" name="smr_delete_files_on_deactivate" value="0">
 		<label>
 			<input type="checkbox" name="smr_delete_files_on_deactivate" value="1" <?php checked( $value ); ?>>
 			<?php esc_html_e( 'Delete all revision files when plugin is deactivated', 'smart-media-replacement' ); ?>
@@ -311,6 +402,7 @@ class SettingsPage {
 	public function render_delete_data_field(): void {
 		$value = get_option( 'smr_delete_data_on_deactivate', false );
 		?>
+		<input type="hidden" name="smr_delete_data_on_deactivate" value="0">
 		<label>
 			<input type="checkbox" name="smr_delete_data_on_deactivate" value="1" <?php checked( $value ); ?>>
 			<?php esc_html_e( 'Delete database table when plugin is deactivated', 'smart-media-replacement' ); ?>
@@ -335,7 +427,7 @@ class SettingsPage {
 
 		$blog_id = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM {$table_name} WHERE blog_id = %d",
