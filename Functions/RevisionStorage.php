@@ -89,26 +89,38 @@ class RevisionStorage {
 	/**
 	 * Create the revision storage directory for an attachment.
 	 *
+	 * Always ensures index.php exists in both the base and attachment
+	 * directory — this covers upgrades from a version that protected the
+	 * subdirectory but left the base directory listable.
+	 *
 	 * @param int $attachment_id Attachment ID.
 	 * @return bool Whether directory was created/exists.
 	 */
 	public static function create_directory( int $attachment_id ): bool {
-		$dir = self::get_attachment_path( $attachment_id );
+		$base_dir = self::get_base_path();
+		$dir      = self::get_attachment_path( $attachment_id );
 
-		if ( ! file_exists( $dir ) ) {
-			$created = wp_mkdir_p( $dir );
-			if ( $created ) {
-				// Add index.php for security.
-				$index_file = trailingslashit( $dir ) . 'index.php';
-				if ( ! file_exists( $index_file ) ) {
-					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-					file_put_contents( $index_file, '<?php // Silence is golden.' );
-				}
-			}
-			return $created;
+		if ( ! file_exists( $dir ) && ! wp_mkdir_p( $dir ) ) {
+			return false;
 		}
 
+		self::add_index_file( $base_dir );
+		self::add_index_file( $dir );
+
 		return true;
+	}
+
+	/**
+	 * Drop a silent index.php into a directory if one is missing.
+	 *
+	 * @param string $dir Directory to protect.
+	 */
+	private static function add_index_file( string $dir ): void {
+		$index_file = trailingslashit( $dir ) . 'index.php';
+		if ( ! file_exists( $index_file ) ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			file_put_contents( $index_file, '<?php // Silence is golden.' );
+		}
 	}
 
 	/**
@@ -236,10 +248,19 @@ class RevisionStorage {
 	/**
 	 * Get the full file path from a relative path.
 	 *
+	 * Refuses any relative path that contains parent-directory references —
+	 * file_path values in the database are constructed by store_revision()
+	 * from controlled inputs and should never contain "..", so the presence
+	 * of one indicates tampering. Returning an empty string forces callers'
+	 * file_exists() check to fail closed.
+	 *
 	 * @param string $relative_path Relative path from database.
-	 * @return string Full file path.
+	 * @return string Full file path, or empty string if the path is suspect.
 	 */
 	public static function get_full_path( string $relative_path ): string {
+		if ( '' === $relative_path || false !== strpos( $relative_path, '..' ) ) {
+			return '';
+		}
 		$upload_dir = wp_upload_dir();
 		return trailingslashit( $upload_dir['basedir'] ) . $relative_path;
 	}
@@ -321,6 +342,10 @@ class RevisionStorage {
 	/**
 	 * Create a ZIP archive of all revisions for an attachment.
 	 *
+	 * The archive is written to WordPress's temp directory rather than the
+	 * publicly-served uploads directory — these archives are intended for
+	 * one-shot download and are cleaned up by the caller after streaming.
+	 *
 	 * @param int   $attachment_id Attachment ID.
 	 * @param array $revisions     Array of revision objects.
 	 * @return string|false Path to ZIP file or false on failure.
@@ -330,15 +355,14 @@ class RevisionStorage {
 			return false;
 		}
 
-		$upload_dir = wp_upload_dir();
-		$zip_name   = 'revisions-' . $attachment_id . '-' . time() . '.zip';
-		$zip_path   = trailingslashit( $upload_dir['basedir'] ) . self::STORAGE_DIR . '/' . $zip_name;
-
-		// Ensure base directory exists.
-		$base_dir = self::get_base_path();
-		if ( ! file_exists( $base_dir ) ) {
-			wp_mkdir_p( $base_dir );
-		}
+		// wp_unique_filename guards against collision if two requests fire at
+		// the same second; the directory is private so a predictable name is
+		// not by itself a leak vector, but uniqueness avoids overwriting an
+		// in-flight download from a concurrent request.
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		$temp_dir = trailingslashit( get_temp_dir() );
+		$zip_name = wp_unique_filename( $temp_dir, 'smr-revisions-' . $attachment_id . '-' . time() . '.zip' );
+		$zip_path = $temp_dir . $zip_name;
 
 		$zip = new \ZipArchive();
 		if ( $zip->open( $zip_path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Smart Media Replacement
  * Description:       This plugin allows you to replace media in the media library with revision tracking.
- * Requires at least: 6.6
+ * Requires at least: 7.0
  * Requires PHP:      7.0
  * Version:           1.1.0
  * Author:            Troy Chaplin

@@ -69,7 +69,7 @@ class ManageMedia {
 	 */
 	public function smart_media_replacement_submit_button( $post ) {
 		// Check if revisions are enabled for this file type.
-		if ( ! $this->is_revision_enabled_for_attachment( $post->ID ) ) {
+		if ( ! Helpers::is_revision_enabled_for_attachment( $post->ID ) ) {
 			?>
 			<div class="misc-pub-section">
 				<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
@@ -114,7 +114,7 @@ class ManageMedia {
 			);
 
 			// Add View Revisions link if revisions are enabled for this file type.
-			if ( $this->is_revision_enabled_for_attachment( $post->ID ) ) {
+			if ( Helpers::is_revision_enabled_for_attachment( $post->ID ) ) {
 				$revision_count = RevisionDatabase::get_count( $post->ID );
 				$label          = __( 'Revisions', 'smart-media-replacement' );
 				if ( $revision_count > 0 ) {
@@ -152,9 +152,12 @@ class ManageMedia {
 			wp_send_json_error( __( 'No file was uploaded.', 'smart-media-replacement' ) );
 		}
 
-		// Get revision data from request.
-		$version_type = isset( $_POST['version_type'] ) ? sanitize_text_field( wp_unslash( $_POST['version_type'] ) ) : get_option( 'smr_default_version_type', 'minor' );
-		$comment      = isset( $_POST['comment'] ) ? sanitize_textarea_field( wp_unslash( $_POST['comment'] ) ) : '';
+		// Get revision data from request. version_type is constrained to a
+		// known enum so a malformed input always falls back to 'minor' rather
+		// than reaching calculate_next_version() with garbage.
+		$raw_version_type = isset( $_POST['version_type'] ) ? sanitize_text_field( wp_unslash( $_POST['version_type'] ) ) : get_option( 'smr_default_version_type', 'minor' );
+		$version_type     = in_array( $raw_version_type, array( 'major', 'minor' ), true ) ? $raw_version_type : 'minor';
+		$comment          = isset( $_POST['comment'] ) ? sanitize_textarea_field( wp_unslash( $_POST['comment'] ) ) : '';
 
 		// Check if comment is required.
 		$require_comment = get_option( 'smr_require_comment', false );
@@ -210,7 +213,7 @@ class ManageMedia {
 			$current_filename = basename( $current_file );
 
 			// Extract original filename (handle scaled images).
-			$original_filename = $this->get_original_filename( $current_filename );
+			$original_filename = Helpers::get_original_filename( $current_filename );
 			$is_scaled_image   = $original_filename !== $current_filename;
 
 			// Validate that the new file has the correct name and MIME type.
@@ -254,24 +257,8 @@ class ManageMedia {
 				}
 			}
 
-			// Create revision before replacing (stores the current file).
-			/**
-			 * Fires before a media file is replaced.
-			 *
-			 * @param int   $attachment_id    The attachment ID.
-			 * @param array $replacement_data Version type and comment data.
-			 */
-			do_action(
-				'smart_media_replacement_before_replace',
-				$attachment_id,
-				array(
-					'version_type' => $version_type,
-					'comment'      => $comment,
-				)
-			);
-
 			// Validate dimensions for images.
-			$current_image_info = getimagesize( $current_file );
+			$current_image_info = file_exists( $current_file ) ? getimagesize( $current_file ) : false;
 			if ( $current_image_info ) {
 				// This is an image, check dimensions.
 				$new_image_info = getimagesize( $file['tmp_name'] );
@@ -316,6 +303,24 @@ class ManageMedia {
 				}
 			}
 
+			/**
+			 * Fires once a replacement has passed all validation, just before
+			 * the new file is moved into place. Listeners (notably the revision
+			 * system) use this to snapshot the current file. Fired after
+			 * validation so failed uploads do not leave junk revisions behind.
+			 *
+			 * @param int   $attachment_id    The attachment ID.
+			 * @param array $replacement_data Version type and comment data.
+			 */
+			do_action(
+				'smart_media_replacement_before_replace',
+				$attachment_id,
+				array(
+					'version_type' => $version_type,
+					'comment'      => $comment,
+				)
+			);
+
 			// Move the uploaded file into place first. If anything after this fails,
 			// the user keeps their new file rather than losing both old and new.
 			$target_path = path_join( $current_dir, $original_filename );
@@ -325,7 +330,7 @@ class ManageMedia {
 			}
 
 			// Clean up old files. The new file at $target_path is preserved.
-			$this->delete_attachment_files( $attachment_id, $current_file, $target_path, $is_scaled_image, $original_filename );
+			Helpers::delete_attachment_files( $attachment_id, $target_path );
 
 			// Update the attachment metadata.
 			$attachment_data = wp_generate_attachment_metadata( $attachment_id, $target_path );
@@ -362,90 +367,6 @@ class ManageMedia {
 			);
 		} catch ( \Exception $e ) {
 			wp_send_json_error( $e->getMessage() );
-		}
-	}
-
-	/**
-	 * Extract original filename from a potentially scaled filename.
-	 *
-	 * @param string $filename The filename to process.
-	 * @return string The original filename without -scaled suffix.
-	 */
-	private function get_original_filename( $filename ) {
-		// Check if filename contains -scaled.
-		if ( preg_match( '/^(.+)-scaled(\.[^.]+)$/', $filename, $matches ) ) {
-			return $matches[1] . $matches[2];
-		}
-		return $filename;
-	}
-
-	/**
-	 * Check if revisions are enabled for an attachment based on file type setting.
-	 *
-	 * @param int $attachment_id The attachment ID.
-	 * @return bool Whether revisions are enabled for this attachment.
-	 */
-	public function is_revision_enabled_for_attachment( int $attachment_id ): bool {
-		// Check if revisions are globally enabled.
-		if ( ! get_option( 'smr_enable_revisions', true ) ) {
-			return false;
-		}
-
-		$file_type_setting = get_option( 'smr_revision_file_types', 'documents' );
-
-		// If 'all', revisions are always enabled.
-		if ( 'all' === $file_type_setting ) {
-			return true;
-		}
-
-		$is_image = wp_attachment_is_image( $attachment_id );
-
-		// If 'images', only enable for images.
-		if ( 'images' === $file_type_setting ) {
-			return $is_image;
-		}
-
-		// Default 'documents' - enable for non-images (PDFs, docs, etc.).
-		return ! $is_image;
-	}
-
-	/**
-	 * Delete files associated with an attachment, skipping any path that matches
-	 * the new target so we never delete the freshly uploaded replacement.
-	 *
-	 * @param int    $attachment_id     The attachment ID.
-	 * @param string $current_file      The current (old) file path.
-	 * @param string $target_path       The path of the new file (will be skipped).
-	 * @param bool   $is_scaled_image   Whether the current file is scaled.
-	 * @param string $original_filename The original filename.
-	 */
-	private function delete_attachment_files( $attachment_id, $current_file, $target_path, $is_scaled_image, $original_filename ) {
-		$current_dir = dirname( $current_file );
-		$meta        = wp_get_attachment_metadata( $attachment_id );
-
-		// Delete the current main file (unless it shares a path with the new file).
-		if ( $current_file !== $target_path && file_exists( $current_file ) ) {
-			wp_delete_file( $current_file );
-		}
-
-		// If this is a scaled image, also delete the unscaled original.
-		// In the scaled case the target path equals the unscaled-original path,
-		// so this check is what prevents us from nuking the file we just moved.
-		if ( $is_scaled_image ) {
-			$original_file_path = path_join( $current_dir, $original_filename );
-			if ( $original_file_path !== $target_path && file_exists( $original_file_path ) ) {
-				wp_delete_file( $original_file_path );
-			}
-		}
-
-		// Delete all generated image sizes.
-		if ( ! empty( $meta['sizes'] ) ) {
-			foreach ( $meta['sizes'] as $size_info ) {
-				$size_file = path_join( $current_dir, $size_info['file'] );
-				if ( $size_file !== $target_path && file_exists( $size_file ) ) {
-					wp_delete_file( $size_file );
-				}
-			}
 		}
 	}
 }
