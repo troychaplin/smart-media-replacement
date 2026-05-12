@@ -132,13 +132,8 @@ class RevisionStorage {
 
 		$target_path = self::get_revision_file_path( $attachment_id, $version, $filename );
 
-		// Initialize WordPress filesystem.
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		WP_Filesystem();
-		global $wp_filesystem;
-
-		// Copy the file.
-		$copied = $wp_filesystem->copy( $source_file, $target_path, true );
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_copy -- WP_Filesystem falls back to FTP on hosts where the PHP user does not own uploads, causing fatals; native copy() is correct since both paths are under wp-content/uploads which PHP can already write.
+		$copied = copy( $source_file, $target_path );
 
 		if ( $copied ) {
 			$file_size = filesize( $target_path );
@@ -186,14 +181,7 @@ class RevisionStorage {
 			return true;
 		}
 
-		// Initialize WordPress filesystem.
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		WP_Filesystem();
-		global $wp_filesystem;
-
-		$deleted = $wp_filesystem->rmdir( $dir, true );
-
-		return $deleted;
+		return self::recursive_rmdir( $dir );
 	}
 
 	/**
@@ -208,14 +196,41 @@ class RevisionStorage {
 			return true;
 		}
 
-		// Initialize WordPress filesystem.
-		require_once ABSPATH . 'wp-admin/includes/file.php';
-		WP_Filesystem();
-		global $wp_filesystem;
+		return self::recursive_rmdir( $base_dir );
+	}
 
-		$deleted = $wp_filesystem->rmdir( $base_dir, true );
+	/**
+	 * Recursively delete a directory and its contents using native PHP.
+	 *
+	 * WP_Filesystem is avoided here because it falls back to FTP on hosts where
+	 * the PHP user does not own wp-content/uploads, fataling without credentials.
+	 * Since the revision directory is always created by the same PHP user, native
+	 * unlink/rmdir always works.
+	 *
+	 * @param string $dir Directory path to remove.
+	 * @return bool Whether the directory was fully removed.
+	 */
+	private static function recursive_rmdir( string $dir ): bool {
+		if ( ! is_dir( $dir ) ) {
+			return ! file_exists( $dir );
+		}
 
-		return $deleted;
+		$iterator = new \RecursiveIteratorIterator(
+			new \RecursiveDirectoryIterator( $dir, \RecursiveDirectoryIterator::SKIP_DOTS ),
+			\RecursiveIteratorIterator::CHILD_FIRST
+		);
+
+		foreach ( $iterator as $item ) {
+			if ( $item->isDir() ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- native rmdir is required; see method docblock.
+				rmdir( $item->getPathname() );
+			} else {
+				wp_delete_file( $item->getPathname() );
+			}
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_rmdir -- native rmdir is required; see method docblock.
+		return rmdir( $dir );
 	}
 
 	/**

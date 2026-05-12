@@ -316,20 +316,16 @@ class ManageMedia {
 				}
 			}
 
-			// Delete the old files.
-			$this->delete_attachment_files( $attachment_id, $current_file, $is_scaled_image, $original_filename );
-
-			// Move the uploaded file to the correct location with the original filename.
+			// Move the uploaded file into place first. If anything after this fails,
+			// the user keeps their new file rather than losing both old and new.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			// Move the uploaded file to the target location using WordPress Filesystem API.
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			WP_Filesystem();
-			global $wp_filesystem;
-
-			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
+			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'smart-media-replacement' ) );
 			}
+
+			// Clean up old files. The new file at $target_path is preserved.
+			$this->delete_attachment_files( $attachment_id, $current_file, $target_path, $is_scaled_image, $original_filename );
 
 			// Update the attachment metadata.
 			$attachment_data = wp_generate_attachment_metadata( $attachment_id, $target_path );
@@ -414,35 +410,39 @@ class ManageMedia {
 	}
 
 	/**
-	 * Delete all files associated with an attachment.
+	 * Delete files associated with an attachment, skipping any path that matches
+	 * the new target so we never delete the freshly uploaded replacement.
 	 *
-	 * @param int    $attachment_id The attachment ID.
-	 * @param string $current_file The current file path.
-	 * @param bool   $is_scaled_image Whether the current file is scaled.
+	 * @param int    $attachment_id     The attachment ID.
+	 * @param string $current_file      The current (old) file path.
+	 * @param string $target_path       The path of the new file (will be skipped).
+	 * @param bool   $is_scaled_image   Whether the current file is scaled.
 	 * @param string $original_filename The original filename.
 	 */
-	private function delete_attachment_files( $attachment_id, $current_file, $is_scaled_image, $original_filename ) {
+	private function delete_attachment_files( $attachment_id, $current_file, $target_path, $is_scaled_image, $original_filename ) {
 		$current_dir = dirname( $current_file );
 		$meta        = wp_get_attachment_metadata( $attachment_id );
 
-		// Delete the current main file.
-		if ( file_exists( $current_file ) ) {
+		// Delete the current main file (unless it shares a path with the new file).
+		if ( $current_file !== $target_path && file_exists( $current_file ) ) {
 			wp_delete_file( $current_file );
 		}
 
-		// If this is a scaled image, also delete the original file if it exists.
+		// If this is a scaled image, also delete the unscaled original.
+		// In the scaled case the target path equals the unscaled-original path,
+		// so this check is what prevents us from nuking the file we just moved.
 		if ( $is_scaled_image ) {
 			$original_file_path = path_join( $current_dir, $original_filename );
-			if ( file_exists( $original_file_path ) ) {
+			if ( $original_file_path !== $target_path && file_exists( $original_file_path ) ) {
 				wp_delete_file( $original_file_path );
 			}
 		}
 
 		// Delete all generated image sizes.
 		if ( ! empty( $meta['sizes'] ) ) {
-			foreach ( $meta['sizes'] as $size => $size_info ) {
+			foreach ( $meta['sizes'] as $size_info ) {
 				$size_file = path_join( $current_dir, $size_info['file'] );
-				if ( file_exists( $size_file ) ) {
+				if ( $size_file !== $target_path && file_exists( $size_file ) ) {
 					wp_delete_file( $size_file );
 				}
 			}
