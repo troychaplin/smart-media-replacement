@@ -7,7 +7,7 @@
 /**
  * WordPress dependencies
  */
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 
 /**
  * Handle the media replacement functionality.
@@ -250,24 +250,70 @@ document.addEventListener('DOMContentLoaded', function () {
 
 		const button = this;
 
-		// Show replacement modal with version and comment options
-		showReplacementModal(attachmentId, button);
+		// Skip the modal entirely when no revision will be created — either
+		// the global setting is off or the per-attachment file type filter
+		// excludes this attachment. PHP sets data-revisions-enabled on the
+		// button to "1" / "0" so the JS can distinguish.
+		const revisionData = window.smrRevisionData || {};
+		const globalEnableRevisions = revisionData.enableRevisions !== false;
+		const attachmentRevisionsEnabled = button.getAttribute('data-revisions-enabled') === '1';
+		const showModal = globalEnableRevisions && attachmentRevisionsEnabled;
+
+		if (showModal) {
+			showReplacementModal(attachmentId, button);
+		} else {
+			openDirectFilePicker(attachmentId, button);
+		}
 	}
 
-	// Show the replacement modal with version type and comment fields
+	// Direct file-picker flow used when no revision metadata is collected.
+	// Restores the pre-revision UX: click → native file picker → replace.
+	function openDirectFilePicker(attachmentId, button) {
+		const fileInput = document.createElement('input');
+		fileInput.type = 'file';
+		fileInput.style.display = 'none';
+		document.body.appendChild(fileInput);
+
+		fileInput.addEventListener('change', function () {
+			if (this.files.length === 0) {
+				document.body.removeChild(fileInput);
+				return;
+			}
+
+			const selectedFile = this.files[0];
+
+			if (button) {
+				button.disabled = true;
+				button.textContent = __('Replacing…', 'smart-media-replacement');
+			}
+
+			performReplacement(attachmentId, selectedFile, button, 'minor', '');
+			document.body.removeChild(fileInput);
+		});
+
+		fileInput.click();
+	}
+
+	// Show the replacement modal with version type and comment fields.
+	// Only called when revisions WILL be created — the per-attachment check
+	// happens in handleReplaceClick before this is invoked.
 	function showReplacementModal(attachmentId, button) {
-		// Get settings from localized data
 		const revisionData = window.smrRevisionData || {};
-		const enableRevisions = revisionData.enableRevisions !== false;
-		const requireComment = enableRevisions && (revisionData.requireComment || false);
+		const requireComment = revisionData.requireComment || false;
 		const defaultVersion = revisionData.defaultVersion || 'minor';
 		const maxRevisions = window.smartMediaReplacementData?.maxRevisions || 10;
 
-		// Get revision count from button data attribute
 		const revisionCount = button
 			? parseInt(button.getAttribute('data-revision-count') || '0', 10)
 			: 0;
-		const isAtLimit = enableRevisions && maxRevisions > 0 && revisionCount >= maxRevisions;
+		const isAtLimit = maxRevisions > 0 && revisionCount >= maxRevisions;
+
+		// Pre-computed version strings from PHP. Empty latestVersion means no
+		// prior revisions exist — both major/minor produce v1.0 for the first
+		// replacement, so we render an info note instead of a meaningless choice.
+		const latestVersion = button ? button.getAttribute('data-latest-version') || '' : '';
+		const nextMinor = button ? button.getAttribute('data-next-minor') || '1.0' : '1.0';
+		const nextMajor = button ? button.getAttribute('data-next-major') || '1.0' : '1.0';
 
 		// Create modal overlay
 		const overlay = document.createElement('div');
@@ -291,34 +337,55 @@ document.addEventListener('DOMContentLoaded', function () {
 			</div>`
 			: '';
 
-		// Build version type HTML only if revisions are enabled
-		const versionTypeHtml = enableRevisions
-			? `<div style="margin-bottom:16px;">
+		// Version type UI: hide the choice entirely on the first revision (no
+		// meaningful difference between major/minor), otherwise show two radios
+		// with labels derived from the attachment's actual latest version.
+		let versionTypeHtml;
+		if (!latestVersion) {
+			versionTypeHtml = `<div style="margin-bottom:16px;">
+				<p style="margin:0;color:#646970;">${sprintf(
+					/* translators: %s: the version string that will be assigned, e.g. "1.0" */
+					__('First revision will be saved as v%s.', 'smart-media-replacement'),
+					nextMinor
+				)}</p>
+				<input type="hidden" name="smr_version_type" value="minor">
+			</div>`;
+		} else {
+			const minorLabel = sprintf(
+				/* translators: 1: current version, 2: next minor version */
+				__('Minor (v%1$s → v%2$s)', 'smart-media-replacement'),
+				latestVersion,
+				nextMinor
+			);
+			const majorLabel = sprintf(
+				/* translators: 1: current version, 2: next major version */
+				__('Major (v%1$s → v%2$s)', 'smart-media-replacement'),
+				latestVersion,
+				nextMajor
+			);
+			versionTypeHtml = `<div style="margin-bottom:16px;">
 				<label style="display:block;margin-bottom:8px;font-weight:600;">${__('Version Type', 'smart-media-replacement')}</label>
 				<div style="display:flex;gap:16px;">
 					<label style="display:flex;align-items:center;gap:4px;">
 						<input type="radio" name="smr_version_type" value="minor" ${defaultVersion === 'minor' ? 'checked' : ''}>
-						${__('Minor (1.0 → 1.1)', 'smart-media-replacement')}
+						${minorLabel}
 					</label>
 					<label style="display:flex;align-items:center;gap:4px;">
 						<input type="radio" name="smr_version_type" value="major" ${defaultVersion === 'major' ? 'checked' : ''}>
-						${__('Major (1.0 → 2.0)', 'smart-media-replacement')}
+						${majorLabel}
 					</label>
 				</div>
-			</div>`
-			: '<input type="hidden" name="smr_version_type" value="minor">';
+			</div>`;
+		}
 
-		// Build comment HTML only if revisions are enabled
-		const commentHtml = enableRevisions
-			? `<div style="margin-bottom:16px;">
-				<label for="smr_comment" style="display:block;margin-bottom:8px;font-weight:600;">
-					${__('Comment', 'smart-media-replacement')}
-					${requireComment ? '<span style="color:#d63638;">*</span>' : ''}
-				</label>
-				<textarea id="smr_comment" rows="3" style="width:100%;resize:vertical;" placeholder="${__('Describe the changes…', 'smart-media-replacement')}"></textarea>
-				${requireComment ? `<p style="color:#666;font-size:12px;margin-top:4px;">${__('A comment is required.', 'smart-media-replacement')}</p>` : ''}
-			</div>`
-			: '';
+		const commentHtml = `<div style="margin-bottom:16px;">
+			<label for="smr_comment" style="display:block;margin-bottom:8px;font-weight:600;">
+				${__('Replacement note', 'smart-media-replacement')}
+				${requireComment ? '<span style="color:#d63638;">*</span>' : ''}
+			</label>
+			<textarea id="smr_comment" rows="3" style="width:100%;resize:vertical;" placeholder="${__('Describe the changes…', 'smart-media-replacement')}"></textarea>
+			${requireComment ? `<p style="color:#666;font-size:12px;margin-top:4px;">${__('A comment is required.', 'smart-media-replacement')}</p>` : ''}
+		</div>`;
 
 		modal.innerHTML = `
 			<h2 style="margin-top:0;margin-bottom:16px;">${__('Replace File', 'smart-media-replacement')}</h2>
@@ -385,7 +452,12 @@ document.addEventListener('DOMContentLoaded', function () {
 				return;
 			}
 
-			const versionType = modal.querySelector('input[name="smr_version_type"]:checked').value;
+			// Handles both the radio-button case (uses :checked) and the
+			// first-revision hidden-input case (no checked state).
+			const versionInput =
+				modal.querySelector('input[name="smr_version_type"]:checked') ||
+				modal.querySelector('input[name="smr_version_type"]');
+			const versionType = versionInput ? versionInput.value : 'minor';
 			const comment = commentInput ? commentInput.value.trim() : '';
 
 			if (requireComment && !comment) {
@@ -599,13 +671,10 @@ function showRevisionsModal(attachmentId) {
 				loadingEl.style.display = 'none';
 				contentEl.style.display = 'block';
 				contentEl.innerHTML = renderRevisionsContent(data.data, attachmentId);
-
-				// Add event listeners to buttons in the modal
-				contentEl.querySelectorAll('.smr-restore-btn').forEach(btn => {
-					btn.addEventListener('click', function () {
-						handleRestoreClick(this);
-					});
-				});
+				// Restore button clicks are handled by the document-level
+				// delegated listener registered in initRevisionHistory; no
+				// per-button listener needed here. Adding one here would
+				// cause every click to fire handleRestoreClick twice.
 			} else {
 				loadingEl.innerHTML = `<p style="color:#d63638;">${data.data || __('Error loading revisions.', 'smart-media-replacement')}</p>`;
 			}
@@ -625,47 +694,74 @@ function showRevisionsModal(attachmentId) {
  */
 function renderRevisionsContent(data, attachmentId) {
 	const revisions = data.revisions || [];
+	const currentFile = data.current_file || null;
 	const totalStorage = data.total_storage || '0 B';
 	const count = data.count || 0;
 	const revisionData = window.smrRevisionData || {};
 	const downloadNonce = revisionData.downloadNonce;
 	const ajaxUrl = revisionData.ajaxUrl || window.smartMediaReplacementData?.ajaxUrl;
 
-	if (revisions.length === 0) {
-		return `
-			<div style="text-align:center;padding:32px;color:#666;">
-				<p>${__('No revisions yet. Revisions are created when you replace the file.', 'smart-media-replacement')}</p>
-			</div>
-		`;
+	let html = '';
+
+	// Replacement notes are stored on the retired snapshot in the DB, but
+	// they describe the NEW file that took over in that event. So at display
+	// time we shift each comment forward by one row — the note attached to
+	// revisions[i] (the version that was retired) is shown on the version
+	// that replaced it. The most recent comment moves all the way up to the
+	// Current file row; the oldest revision ends up with no note because no
+	// replacement event introduced it (it was the original upload).
+	const currentFileNote = revisions.length > 0 ? revisions[0].comment : '';
+
+	// Current live file always appears at the top — it represents what is
+	// actually on disk right now, distinct from the snapshots below which
+	// are historical only.
+	if (currentFile) {
+		html += renderCurrentFileEntry(currentFile, currentFileNote);
 	}
 
-	let html = `
-		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #ddd;">
-			<div>
-				<strong>${__('Total Revisions:', 'smart-media-replacement')}</strong> ${count}
-				&nbsp;&nbsp;|&nbsp;&nbsp;
-				<strong>${__('Storage Used:', 'smart-media-replacement')}</strong> ${totalStorage}
+	if (revisions.length === 0) {
+		html += `
+			<p style="text-align:center;padding:24px;color:#666;">
+				${__('No replacement history yet. Each time you replace this file, the previous version is preserved here.', 'smart-media-replacement')}
+			</p>
+		`;
+		return html;
+	}
+
+	// Replacement history section — divider with stats and Download All
+	html += `
+		<div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid #ddd;">
+			<h3 style="margin:0;font-size:14px;">${__('Replacement history', 'smart-media-replacement')}</h3>
+			<div style="display:flex;align-items:center;gap:12px;">
+				<span style="color:#646970;font-size:12px;">${count} • ${totalStorage}</span>
+				<a href="${ajaxUrl}?action=smr_download_all_revisions&attachment_id=${attachmentId}&nonce=${downloadNonce}" class="button button-small">
+					${__('Download all', 'smart-media-replacement')}
+				</a>
 			</div>
-			<a href="${ajaxUrl}?action=smr_download_all_revisions&attachment_id=${attachmentId}&nonce=${downloadNonce}" class="button">
-				${__('Download All', 'smart-media-replacement')}
-			</a>
 		</div>
 		<div class="smr-revisions-list">
 	`;
 
 	revisions.forEach((revision, index) => {
-		const isLatest = index === 0;
+		// Display the note from the next-OLDER revision — that comment was
+		// made when this version was introduced. The oldest revision is the
+		// original upload, so it has no introducing event and no note.
+		const displayedNote = index < revisions.length - 1 ? revisions[index + 1].comment : '';
+
 		html += `
-			<div class="smr-revision-item" style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px;margin-bottom:8px;background:${isLatest ? '#f0f6fc' : '#f9f9f9'};border-radius:4px;border:1px solid ${isLatest ? '#2271b1' : '#ddd'};">
+			<div class="smr-revision-item" style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px;margin-bottom:8px;background:#f9f9f9;border-radius:4px;border:1px solid #ddd;">
 				<div style="flex:1;">
-					<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+					<div style="margin-bottom:4px;">
 						<strong style="font-size:14px;">v${revision.version}</strong>
-						${isLatest ? `<span style="background:#2271b1;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;">${__('Latest', 'smart-media-replacement')}</span>` : ''}
 					</div>
 					<div style="color:#666;font-size:12px;">
 						${revision.created_at} &bull; ${revision.user_name} &bull; ${revision.file_size}
 					</div>
-					${revision.comment ? `<div style="margin-top:4px;font-style:italic;color:#555;">"${revision.comment}"</div>` : ''}
+					${
+						displayedNote
+							? `<div style="margin-top:4px;color:#555;"><strong>${__('Replacement note:', 'smart-media-replacement')}</strong> <em>${displayedNote}</em></div>`
+							: ''
+					}
 				</div>
 				<div style="display:flex;gap:8px;">
 					<a href="${ajaxUrl}?action=smr_download_revision&revision_id=${revision.id}&nonce=${downloadNonce}" class="button button-small">
@@ -681,6 +777,51 @@ function renderRevisionsContent(data, attachmentId) {
 
 	html += '</div>';
 	return html;
+}
+
+/**
+ * Render the "Current file" entry shown at the top of the revisions modal.
+ * Represents the live attachment file (not stored in the revisions table)
+ * so users can see at a glance what is currently active vs. what is history.
+ *
+ * @param {Object} currentFile File info from the AJAX response.
+ * @param {string} note        Replacement note describing how this file
+ *                             became current (the most recent event's note).
+ *                             Empty string when no replacements have happened.
+ * @return {string} HTML for the current-file panel.
+ */
+function renderCurrentFileEntry(currentFile, note) {
+	const downloadAttr = currentFile.filename ? ` download="${currentFile.filename}"` : '';
+	return `
+		<div class="smr-current-file" style="display:flex;justify-content:space-between;align-items:flex-start;padding:12px;margin-bottom:8px;background:#f0f6fc;border-radius:4px;border:1px solid #2271b1;">
+			<div style="flex:1;">
+				<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+					<strong style="font-size:14px;">${__('Current file', 'smart-media-replacement')}</strong>
+					<span style="background:#2271b1;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;">${__('Live', 'smart-media-replacement')}</span>
+				</div>
+				<div style="color:#666;font-size:12px;">
+					${currentFile.filename} &bull; ${currentFile.file_size}
+				</div>
+				<div style="color:#666;font-size:12px;margin-top:2px;">
+					${sprintf(
+						/* translators: %s: timestamp when the current file took its place */
+						__('Active since %s', 'smart-media-replacement'),
+						currentFile.active_since
+					)}
+				</div>
+				${
+					note
+						? `<div style="margin-top:4px;color:#555;font-size:13px;"><strong>${__('Replacement note:', 'smart-media-replacement')}</strong> <em>${note}</em></div>`
+						: ''
+				}
+			</div>
+			<div style="display:flex;gap:8px;">
+				<a href="${currentFile.url}"${downloadAttr} class="button button-small" target="_blank" rel="noopener noreferrer">
+					${__('Download', 'smart-media-replacement')}
+				</a>
+			</div>
+		</div>
+	`;
 }
 
 /**
@@ -703,7 +844,7 @@ function handleRestoreClick(button) {
 	const version = button.getAttribute('data-version');
 
 	button.disabled = true;
-	button.textContent = strings.restoring || 'Restoring...';
+	button.textContent = strings.restoring || __('Restoring…', 'smart-media-replacement');
 
 	const formData = new FormData();
 	formData.append('action', 'smr_restore_revision');
@@ -719,25 +860,80 @@ function handleRestoreClick(button) {
 		.then(response => response.json())
 		.then(data => {
 			if (data.success) {
-				// Show success and reload
-				// eslint-disable-next-line no-alert
-				window.alert(
-					strings.restoreSuccess || 'Revision restored successfully. Refreshing...'
+				// Show an inline success notice in the modal so the user
+				// sees confirmation, then reload — the reload is needed so
+				// thumbnails, the media library row, and the file preview
+				// pick up the restored file content.
+				showRestoreNotice(
+					'success',
+					sprintf(
+						/* translators: %s: the version that was restored, e.g. "1.2" */
+						__('Revision v%s restored. Refreshing…', 'smart-media-replacement'),
+						version
+					)
 				);
-				window.location.reload();
+				setTimeout(() => window.location.reload(), 1200);
 			} else {
-				// eslint-disable-next-line no-alert
-				window.alert(data.data || 'Error restoring revision.');
+				showRestoreNotice(
+					'error',
+					data.data || __('Error restoring revision.', 'smart-media-replacement')
+				);
 				button.disabled = false;
-				button.textContent = 'Restore';
+				button.textContent = __('Restore', 'smart-media-replacement');
 			}
 		})
 		.catch(error => {
-			// eslint-disable-next-line no-alert
-			window.alert('Error restoring revision: ' + error.message);
+			showRestoreNotice(
+				'error',
+				__('Error restoring revision:', 'smart-media-replacement') + ' ' + error.message
+			);
 			button.disabled = false;
-			button.textContent = 'Restore';
+			button.textContent = __('Restore', 'smart-media-replacement');
 		});
+}
+
+/**
+ * Insert a success or error notice at the top of the open revisions modal.
+ * Replaces any prior notice so repeated attempts don't stack.
+ *
+ * @param {string} type    Either "success" or "error".
+ * @param {string} message Message text — may contain inline HTML.
+ */
+function showRestoreNotice(type, message) {
+	const modal = document.querySelector('.smr-revisions-modal');
+	if (!modal) {
+		return;
+	}
+
+	const existing = modal.querySelector('.smr-notice');
+	if (existing) {
+		existing.remove();
+	}
+
+	const isSuccess = type === 'success';
+	const notice = document.createElement('div');
+	notice.className = 'smr-notice';
+	notice.style.cssText =
+		'padding:12px 16px;margin-bottom:16px;color:#1d2327;border-left:4px solid ' +
+		(isSuccess ? '#00a32a' : '#d63638') +
+		';background:' +
+		(isSuccess ? '#edfaef' : '#fcf0f1') +
+		';';
+
+	const prefix = isSuccess
+		? '<strong style="color:#00a32a;">&#10003;</strong> '
+		: '<strong style="color:#d63638;">' +
+			__('Error:', 'smart-media-replacement') +
+			'</strong> ';
+	notice.innerHTML = prefix + message;
+
+	// Place under the modal's header row so the title stays visible.
+	const header = modal.firstElementChild;
+	if (header) {
+		header.insertAdjacentElement('afterend', notice);
+	} else {
+		modal.insertBefore(notice, modal.firstChild);
+	}
 }
 
 /**

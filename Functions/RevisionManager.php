@@ -537,8 +537,28 @@ class RevisionManager {
 			);
 		}
 
+		// Current live file info. The "active since" timestamp is the moment
+		// the current file took its place — that's the most recent revision's
+		// created_at (since revisions are snapshotted at every replace/restore).
+		// If no revisions exist yet, fall back to the attachment's upload date.
+		$current_file_path = get_attached_file( $attachment_id );
+		$current_filename  = $current_file_path ? basename( $current_file_path ) : '';
+		$current_filesize  = ( $current_file_path && file_exists( $current_file_path ) ) ? filesize( $current_file_path ) : 0;
+		$active_since_raw  = ! empty( $revisions )
+			? $revisions[0]->created_at
+			: get_post_field( 'post_date', $attachment_id );
+
+		$current_file = array(
+			'filename'     => $current_filename,
+			'file_size'    => size_format( $current_filesize ),
+			'mime_type'    => (string) get_post_mime_type( $attachment_id ),
+			'url'          => (string) wp_get_attachment_url( $attachment_id ),
+			'active_since' => wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $active_since_raw ) ),
+		);
+
 		wp_send_json_success(
 			array(
+				'current_file'  => $current_file,
 				'revisions'     => $formatted,
 				'total_storage' => size_format( $total_storage ),
 				'count'         => count( $revisions ),
