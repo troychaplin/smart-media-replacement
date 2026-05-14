@@ -30,6 +30,7 @@ class ComposerStaticInitebf09a1e2a77684600847f26d7ecd402
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\Plugin' => __DIR__ . '/..' . '/dealerdirect/phpcodesniffer-composer-installer/src/Plugin.php',
         'PHPCSUtils\\AbstractSniffs\\AbstractArrayDeclarationSniff' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/AbstractSniffs/AbstractArrayDeclarationSniff.php',
         'PHPCSUtils\\BackCompat\\BCFile' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCFile.php',
         'PHPCSUtils\\BackCompat\\BCTokens' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCTokens.php',
@@ -80,6 +81,13 @@ class ComposerStaticInitebf09a1e2a77684600847f26d7ecd402
         'PHPCSUtils\\Utils\\TypeString' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/TypeString.php',
         'PHPCSUtils\\Utils\\UseStatements' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/UseStatements.php',
         'PHPCSUtils\\Utils\\Variables' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/Variables.php',
+        'Smart_Media_Replacement\\Helpers' => __DIR__ . '/../..' . '/Functions/Helpers.php',
+        'Smart_Media_Replacement\\ManageMedia' => __DIR__ . '/../..' . '/Functions/ManageMedia.php',
+        'Smart_Media_Replacement\\RevisionDatabase' => __DIR__ . '/../..' . '/Functions/RevisionDatabase.php',
+        'Smart_Media_Replacement\\RevisionManager' => __DIR__ . '/../..' . '/Functions/RevisionManager.php',
+        'Smart_Media_Replacement\\RevisionStorage' => __DIR__ . '/../..' . '/Functions/RevisionStorage.php',
+        'Smart_Media_Replacement\\RevisionUI' => __DIR__ . '/../..' . '/Functions/RevisionUI.php',
+        'Smart_Media_Replacement\\SettingsPage' => __DIR__ . '/../..' . '/Functions/SettingsPage.php',
     );
 
     public static function getInitializer(ClassLoader $loader)

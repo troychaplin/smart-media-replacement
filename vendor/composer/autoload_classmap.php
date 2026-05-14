@@ -7,6 +7,7 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
+    'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\Plugin' => $vendorDir . '/dealerdirect/phpcodesniffer-composer-installer/src/Plugin.php',
     'PHPCSUtils\\AbstractSniffs\\AbstractArrayDeclarationSniff' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/AbstractSniffs/AbstractArrayDeclarationSniff.php',
     'PHPCSUtils\\BackCompat\\BCFile' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCFile.php',
     'PHPCSUtils\\BackCompat\\BCTokens' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCTokens.php',
@@ -57,4 +58,11 @@ return array(
     'PHPCSUtils\\Utils\\TypeString' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/TypeString.php',
     'PHPCSUtils\\Utils\\UseStatements' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/UseStatements.php',
     'PHPCSUtils\\Utils\\Variables' => $vendorDir . '/phpcsstandards/phpcsutils/PHPCSUtils/Utils/Variables.php',
+    'Smart_Media_Replacement\\Helpers' => $baseDir . '/Functions/Helpers.php',
+    'Smart_Media_Replacement\\ManageMedia' => $baseDir . '/Functions/ManageMedia.php',
+    'Smart_Media_Replacement\\RevisionDatabase' => $baseDir . '/Functions/RevisionDatabase.php',
+    'Smart_Media_Replacement\\RevisionManager' => $baseDir . '/Functions/RevisionManager.php',
+    'Smart_Media_Replacement\\RevisionStorage' => $baseDir . '/Functions/RevisionStorage.php',
+    'Smart_Media_Replacement\\RevisionUI' => $baseDir . '/Functions/RevisionUI.php',
+    'Smart_Media_Replacement\\SettingsPage' => $baseDir . '/Functions/SettingsPage.php',
 );

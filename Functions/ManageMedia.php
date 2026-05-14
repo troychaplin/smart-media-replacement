@@ -47,13 +47,17 @@ class ManageMedia {
 			true
 		);
 
+		// Get max revisions setting.
+		$max_revisions = (int) get_option( 'smr_max_revisions', 10 );
+
 		// Localize the script with necessary data.
 		wp_localize_script(
 			'smart-media-replacement-script',
 			'smartMediaReplacementData',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( 'smart_media_replacement_nonce' ),
+				'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
+				'nonce'        => wp_create_nonce( 'smart_media_replacement_nonce' ),
+				'maxRevisions' => $max_revisions,
 			)
 		);
 	}
@@ -64,13 +68,81 @@ class ManageMedia {
 	 * @param \WP_Post $post The attachment post object.
 	 */
 	public function smart_media_replacement_submit_button( $post ) {
+		$revisions_enabled = Helpers::is_revision_enabled_for_attachment( $post->ID );
+
+		if ( ! $revisions_enabled ) {
+			?>
+			<div class="misc-pub-section">
+				<button type="button"
+					class="button button-large smart-media-replacement-button"
+					style="width: 100%; text-align: center;"
+					data-attachment-id="<?php echo esc_attr( $post->ID ); ?>"
+					data-revisions-enabled="0">
+					<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
+				</button>
+			</div>
+			<?php
+			return;
+		}
+
+		$version_data   = $this->get_version_data_for_button( $post->ID );
+		$revision_count = RevisionDatabase::get_count( $post->ID );
 		?>
 		<div class="misc-pub-section">
-			<button type="button" class="button button-large smart-media-replacement-button" style="width: 100%; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
-				<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
-			</button>
+			<div style="display: flex; gap: 4px;">
+				<button type="button"
+					class="button button-large smart-media-replacement-button"
+					style="flex: 1; text-align: center;"
+					data-attachment-id="<?php echo esc_attr( $post->ID ); ?>"
+					data-revisions-enabled="1"
+					data-revision-count="<?php echo esc_attr( $revision_count ); ?>"
+					data-latest-version="<?php echo esc_attr( $version_data['latest'] ); ?>"
+					data-next-minor="<?php echo esc_attr( $version_data['next_minor'] ); ?>"
+					data-next-major="<?php echo esc_attr( $version_data['next_major'] ); ?>">
+					<?php esc_html_e( 'Replace File', 'smart-media-replacement' ); ?>
+				</button>
+				<button type="button" class="button button-large smr-view-revisions-btn" style="flex: 1; text-align: center;" data-attachment-id="<?php echo esc_attr( $post->ID ); ?>">
+					<?php esc_html_e( 'View Revisions', 'smart-media-replacement' ); ?>
+					<?php if ( $revision_count > 0 ) : ?>
+						<span class="smr-revision-count-badge">(<?php echo esc_html( $revision_count ); ?>)</span>
+					<?php endif; ?>
+				</button>
+			</div>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Compute the version strings shown in the replace modal for an attachment.
+	 *
+	 * Returns the latest stored revision's version (or empty string when none
+	 * exist yet) plus the "next minor" and "next major" version strings that
+	 * would result from a replacement now. When no revisions exist both
+	 * next-minor and next-major equal "1.0" — calculate_next_version() always
+	 * produces 1.0 for the first revision regardless of type.
+	 *
+	 * @param int $attachment_id The attachment ID.
+	 * @return array{latest:string,next_minor:string,next_major:string}
+	 */
+	private function get_version_data_for_button( int $attachment_id ): array {
+		$latest = RevisionDatabase::get_latest( $attachment_id );
+
+		if ( ! $latest ) {
+			return array(
+				'latest'     => '',
+				'next_minor' => '1.0',
+				'next_major' => '1.0',
+			);
+		}
+
+		$major = (int) $latest->version_major;
+		$minor = (int) $latest->version_minor;
+
+		return array(
+			'latest'     => (string) $latest->version,
+			'next_minor' => $major . '.' . ( $minor + 1 ),
+			'next_major' => ( $major + 1 ) . '.0',
+		);
 	}
 
 	/**
@@ -81,13 +153,46 @@ class ManageMedia {
 	 * @return array Modified actions array.
 	 */
 	public function smart_media_replacement_row_actions( $actions, $post ) {
-		if ( current_user_can( 'edit_post', $post->ID ) ) {
-			$actions['smart_media_replacement'] = sprintf(
-				'<a href="#" class="smart-media-replacement-link smart-media-replacement-button" data-attachment-id="%d">%s</a>',
+		if ( ! current_user_can( 'edit_post', $post->ID ) ) {
+			return $actions;
+		}
+
+		$revisions_enabled = Helpers::is_revision_enabled_for_attachment( $post->ID );
+		$revision_count    = 0;
+		$version_data      = array(
+			'latest'     => '',
+			'next_minor' => '1.0',
+			'next_major' => '1.0',
+		);
+
+		if ( $revisions_enabled ) {
+			$revision_count = RevisionDatabase::get_count( $post->ID );
+			$version_data   = $this->get_version_data_for_button( $post->ID );
+		}
+
+		$actions['smart_media_replacement'] = sprintf(
+			'<a href="#" class="smart-media-replacement-link smart-media-replacement-button" data-attachment-id="%1$d" data-revisions-enabled="%2$d" data-revision-count="%3$d" data-latest-version="%4$s" data-next-minor="%5$s" data-next-major="%6$s">%7$s</a>',
+			$post->ID,
+			$revisions_enabled ? 1 : 0,
+			$revision_count,
+			esc_attr( $version_data['latest'] ),
+			esc_attr( $version_data['next_minor'] ),
+			esc_attr( $version_data['next_major'] ),
+			esc_html__( 'Replace', 'smart-media-replacement' )
+		);
+
+		if ( $revisions_enabled ) {
+			$label = __( 'Revisions', 'smart-media-replacement' );
+			if ( $revision_count > 0 ) {
+				$label .= ' (' . $revision_count . ')';
+			}
+			$actions['smr_view_revisions'] = sprintf(
+				'<a href="#" class="smr-view-revisions-link smr-view-revisions-btn" data-attachment-id="%d">%s</a>',
 				$post->ID,
-				__( 'Replace', 'smart-media-replacement' )
+				esc_html( $label )
 			);
 		}
+
 		return $actions;
 	}
 
@@ -111,6 +216,23 @@ class ManageMedia {
 
 		if ( ! isset( $_FILES['replacement_file'] ) ) {
 			wp_send_json_error( __( 'No file was uploaded.', 'smart-media-replacement' ) );
+		}
+
+		// Get revision data from request. version_type is constrained to a
+		// known enum so a malformed input always falls back to 'minor' rather
+		// than reaching calculate_next_version() with garbage.
+		$raw_version_type = isset( $_POST['version_type'] ) ? sanitize_text_field( wp_unslash( $_POST['version_type'] ) ) : get_option( 'smr_default_version_type', 'minor' );
+		$version_type     = in_array( $raw_version_type, array( 'major', 'minor' ), true ) ? $raw_version_type : 'minor';
+		$comment          = isset( $_POST['comment'] ) ? sanitize_textarea_field( wp_unslash( $_POST['comment'] ) ) : '';
+
+		// Comment is only required when a revision will actually be created —
+		// is_revision_enabled_for_attachment() already accounts for both the
+		// global toggle and the per-file-type filter, so this matches the JS
+		// logic that decides whether to show the comment field at all.
+		$require_comment = Helpers::is_revision_enabled_for_attachment( $attachment_id )
+			&& get_option( 'smr_require_comment', false );
+		if ( $require_comment && empty( $comment ) ) {
+			wp_send_json_error( __( 'A comment is required when replacing files.', 'smart-media-replacement' ) );
 		}
 
 		// Validate and sanitize file upload components.
@@ -161,7 +283,7 @@ class ManageMedia {
 			$current_filename = basename( $current_file );
 
 			// Extract original filename (handle scaled images).
-			$original_filename = $this->get_original_filename( $current_filename );
+			$original_filename = Helpers::get_original_filename( $current_filename );
 			$is_scaled_image   = $original_filename !== $current_filename;
 
 			// Validate that the new file has the correct name and MIME type.
@@ -206,7 +328,7 @@ class ManageMedia {
 			}
 
 			// Validate dimensions for images.
-			$current_image_info = getimagesize( $current_file );
+			$current_image_info = file_exists( $current_file ) ? getimagesize( $current_file ) : false;
 			if ( $current_image_info ) {
 				// This is an image, check dimensions.
 				$new_image_info = getimagesize( $file['tmp_name'] );
@@ -251,20 +373,34 @@ class ManageMedia {
 				}
 			}
 
-			// Delete the old files.
-			$this->delete_attachment_files( $attachment_id, $current_file, $is_scaled_image, $original_filename );
+			/**
+			 * Fires once a replacement has passed all validation, just before
+			 * the new file is moved into place. Listeners (notably the revision
+			 * system) use this to snapshot the current file. Fired after
+			 * validation so failed uploads do not leave junk revisions behind.
+			 *
+			 * @param int   $attachment_id    The attachment ID.
+			 * @param array $replacement_data Version type and comment data.
+			 */
+			do_action(
+				'smart_media_replacement_before_replace',
+				$attachment_id,
+				array(
+					'version_type' => $version_type,
+					'comment'      => $comment,
+				)
+			);
 
-			// Move the uploaded file to the correct location with the original filename.
+			// Move the uploaded file into place first. If anything after this fails,
+			// the user keeps their new file rather than losing both old and new.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			// Move the uploaded file to the target location using WordPress Filesystem API.
-			require_once ABSPATH . 'wp-admin/includes/file.php';
-			WP_Filesystem();
-			global $wp_filesystem;
-
-			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
+			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'smart-media-replacement' ) );
 			}
+
+			// Clean up old files. The new file at $target_path is preserved.
+			Helpers::delete_attachment_files( $attachment_id, $target_path );
 
 			// Update the attachment metadata.
 			$attachment_data = wp_generate_attachment_metadata( $attachment_id, $target_path );
@@ -301,56 +437,6 @@ class ManageMedia {
 			);
 		} catch ( \Exception $e ) {
 			wp_send_json_error( $e->getMessage() );
-		}
-	}
-
-	/**
-	 * Extract original filename from a potentially scaled filename.
-	 *
-	 * @param string $filename The filename to process.
-	 * @return string The original filename without -scaled suffix.
-	 */
-	private function get_original_filename( $filename ) {
-		// Check if filename contains -scaled.
-		if ( preg_match( '/^(.+)-scaled(\.[^.]+)$/', $filename, $matches ) ) {
-			return $matches[1] . $matches[2];
-		}
-		return $filename;
-	}
-
-	/**
-	 * Delete all files associated with an attachment.
-	 *
-	 * @param int    $attachment_id The attachment ID.
-	 * @param string $current_file The current file path.
-	 * @param bool   $is_scaled_image Whether the current file is scaled.
-	 * @param string $original_filename The original filename.
-	 */
-	private function delete_attachment_files( $attachment_id, $current_file, $is_scaled_image, $original_filename ) {
-		$current_dir = dirname( $current_file );
-		$meta        = wp_get_attachment_metadata( $attachment_id );
-
-		// Delete the current main file.
-		if ( file_exists( $current_file ) ) {
-			wp_delete_file( $current_file );
-		}
-
-		// If this is a scaled image, also delete the original file if it exists.
-		if ( $is_scaled_image ) {
-			$original_file_path = path_join( $current_dir, $original_filename );
-			if ( file_exists( $original_file_path ) ) {
-				wp_delete_file( $original_file_path );
-			}
-		}
-
-		// Delete all generated image sizes.
-		if ( ! empty( $meta['sizes'] ) ) {
-			foreach ( $meta['sizes'] as $size => $size_info ) {
-				$size_file = path_join( $current_dir, $size_info['file'] );
-				if ( file_exists( $size_file ) ) {
-					wp_delete_file( $size_file );
-				}
-			}
 		}
 	}
 }

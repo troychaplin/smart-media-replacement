@@ -38,6 +38,8 @@
         <properties>
             <property name="prefixes" type="array">
                 <element value="Smart_Media_Replacement"/>
+                <element value="smart_media_replacement"/>
+                <element value="smr_"/>
             </property>
         </properties>
     </rule>
@@ -48,5 +50,13 @@
                 <element value="smart-media-replacement"/>
             </property>
         </properties>
+    </rule>
+
+    <!-- Exclude filename rules for PSR-4 autoloaded classes in Functions directory -->
+    <rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+        <exclude-pattern>/Functions/</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.Files.FileName.InvalidClassFileName">
+        <exclude-pattern>/Functions/</exclude-pattern>
     </rule>
 </ruleset> 
