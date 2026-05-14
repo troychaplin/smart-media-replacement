@@ -17,6 +17,8 @@ Prefix the change with one of these keywords:
 
 ## [Unreleased]
 
+## [1.1.1]
+
 ### Added
 
 - **Revision system.** The previous file is snapshotted on every replacement and tracked in a custom `wp_smr_revisions` table, with revision files stored under `wp-content/uploads/smr-revisions/<attachment_id>/`. Supports major/minor version numbering, optional replacement notes, configurable maximum revisions per file, an age-based retention policy enforced via a daily cron, and per-file-type opt-in (documents, images, or all).
