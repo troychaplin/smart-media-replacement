@@ -1,7 +1,7 @@
 === Smart Media Replacement ===
 Contributors:      areziaal
 Tags:              media, replace, upload, attachment, pdf
-Requires at least: 7.0
+Requires at least: 6.6
 Tested up to:      7.0
 Stable tag:        1.0.0
 Requires PHP:      7.0
