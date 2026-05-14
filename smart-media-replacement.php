@@ -132,3 +132,4 @@ new \Smart_Media_Replacement\ManageMedia();
 new \Smart_Media_Replacement\RevisionManager();
 new \Smart_Media_Replacement\SettingsPage();
 new \Smart_Media_Replacement\RevisionUI();
+new \Smart_Media_Replacement\EditorIntegration();

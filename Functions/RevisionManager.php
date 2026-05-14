@@ -25,6 +25,11 @@ class RevisionManager {
 	 * Constructor.
 	 */
 	public function __construct() {
+		// Self-heal: ensure the revisions table exists on every admin load.
+		// Covers DB resets, manual drops, and aborted activations where the
+		// only previous recovery path was deactivate/reactivate.
+		add_action( 'admin_init', array( RevisionDatabase::class, 'ensure_table' ) );
+
 		// Hook into file replacement to create revisions.
 		add_action( 'smart_media_replacement_before_replace', array( $this, 'create_revision_before_replace' ), 10, 2 );
 
