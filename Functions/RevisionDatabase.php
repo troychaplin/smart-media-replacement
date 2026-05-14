@@ -110,6 +110,22 @@ class RevisionDatabase {
 	}
 
 	/**
+	 * Ensure the revisions table exists, creating it if missing.
+	 *
+	 * Activation creates the table, but the table can go missing later — DB
+	 * resets, manual drops, an aborted activation hook on a different host,
+	 * or a fresh database restored over an installed plugin. Without recovery,
+	 * the only fix is deactivate/reactivate, which users won't discover.
+	 * Calling this on every admin page load is cheap (one SHOW TABLES query
+	 * when the table exists) and self-heals these edge cases silently.
+	 */
+	public static function ensure_table(): void {
+		if ( ! self::table_exists() ) {
+			self::create_table();
+		}
+	}
+
+	/**
 	 * Check if table exists.
 	 *
 	 * @return bool

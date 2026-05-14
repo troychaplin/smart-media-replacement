@@ -6,16 +6,18 @@ A WordPress plugin that allows you to replace media files while maintaining thei
 
 ## Features
 
-- Replace media files while maintaining original URLs
-- Preserves all existing links (both internal and external)
-- Maintains file metadata and relationships
-- Simple and intuitive interface in the WordPress Media Library
-- Supports all file types supported by WordPress
-- **Validates file names to prevent accidental URL changes**
-- **Enforces dimension matching for images to prevent layout issues**
-- **Automatically handles WordPress scaled images**
-- **Validates file type matching to ensure consistency**
-- AJAX-based replacement with error handling
+- **Replace media files while preserving their URL and ID** — existing internal and external links keep working, attachment metadata and relationships are untouched
+- **Revision history** — every replacement snapshots the previous file, tracked with major/minor versioning and an optional replacement note describing what changed
+- **Restore any prior version** with a single click; restoring also snapshots the current file so nothing is lost
+- **Block editor integration** — "Update existing file" appears in every block's Replace toolbar dropdown (image, cover, audio, video, file, gallery, etc.); the editor refreshes in place without a page reload
+- **Configurable revision policy** — per-file-type opt-in (documents, images, or all), maximum revisions per file, age-based retention with daily cron cleanup, default major/minor behavior, and an optional require-note toggle
+- **Download revisions** — grab any individual revision, or download a ZIP archive of an attachment's full history
+- **Multisite support** — per-site revision storage and settings, automatic cleanup on site deletion, defaults seeded on new site creation
+- **Validates file names** to prevent accidental URL changes
+- **Enforces dimension matching for images** to prevent layout issues
+- **Automatically handles WordPress scaled images** (`-scaled` variants)
+- **Validates file type matching** to ensure MIME consistency
+- AJAX-based replacement with inline error handling and accessibility announcements
 
 ## Installation
 
