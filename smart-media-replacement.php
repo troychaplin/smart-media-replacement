@@ -4,7 +4,7 @@
  * Description:       Replace media library files with revision tracking. On multisite, network-activate only.
  * Requires at least: 6.6
  * Requires PHP:      7.4
- * Version:           1.2.0
+ * Version:           1.2.1
  * Author:            Troy Chaplin
  * License:           GPL-2.0-or-later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
