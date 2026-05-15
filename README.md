@@ -12,7 +12,7 @@ A WordPress plugin that allows you to replace media files while maintaining thei
 - **Block editor integration** — "Update existing file" appears in every block's Replace toolbar dropdown (image, cover, audio, video, file, gallery, etc.); the editor refreshes in place without a page reload
 - **Configurable revision policy** — per-file-type opt-in (documents, images, or all), maximum revisions per file, age-based retention with daily cron cleanup, default major/minor behavior, and an optional require-note toggle
 - **Download revisions** — grab any individual revision, or download a ZIP archive of an attachment's full history
-- **Multisite support** — per-site revision storage and settings, automatic cleanup on site deletion, defaults seeded on new site creation
+- **Multisite-ready** — network-activate only, with one set of settings at Network Admin → Settings → Media Replacement applied to every site; revision files are stored under each site's uploads directory while metadata lives in a single shared network table; daily retention cleanup runs across the network; automatic row and file cleanup when a site is deleted. Single-site installs work exactly as before.
 - **Validates file names** to prevent accidental URL changes
 - **Enforces dimension matching for images** to prevent layout issues
 - **Automatically handles WordPress scaled images** (`-scaled` variants)
@@ -169,7 +169,7 @@ add_action( 'smart_media_replacement_file_replaced', function( $attachment_id, $
 ## Requirements
 
 - WordPress 6.6 or higher
-- PHP 7.0 or higher
+- PHP 7.4 or higher
 - User must have `edit_post` capability for the specific attachment
 
 ## Privacy

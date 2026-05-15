@@ -62,9 +62,9 @@ class RevisionUI {
 				'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
 				'nonce'           => wp_create_nonce( 'smr_revision_nonce' ),
 				'downloadNonce'   => wp_create_nonce( 'smr_download_nonce' ),
-				'enableRevisions' => (bool) get_option( 'smr_enable_revisions', true ),
-				'requireComment'  => (bool) get_option( 'smr_require_comment', false ),
-				'defaultVersion'  => get_option( 'smr_default_version_type', 'minor' ),
+				'enableRevisions' => (bool) Settings::get( 'smr_enable_revisions', true ),
+				'requireComment'  => (bool) Settings::get( 'smr_require_comment', false ),
+				'defaultVersion'  => Settings::get( 'smr_default_version_type', 'minor' ),
 				'strings'         => array(
 					'confirmRestore'   => __( 'Are you sure you want to restore this revision? The current file will be saved as a new revision.', 'smart-media-replacement' ),
 					'restoreSuccess'   => __( 'Revision restored successfully. Refreshing...', 'smart-media-replacement' ),

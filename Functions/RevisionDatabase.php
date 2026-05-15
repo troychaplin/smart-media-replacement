@@ -338,15 +338,21 @@ class RevisionDatabase {
 	}
 
 	/**
-	 * Delete all revisions for current blog.
+	 * Delete all revisions for a given blog.
 	 *
+	 * Accepts an explicit blog ID so callers running outside the target
+	 * blog's context (e.g. the `wp_delete_site` hook, which fires while the
+	 * deleted blog is the current blog only briefly) can pass the ID
+	 * directly instead of relying on `switch_to_blog`.
+	 *
+	 * @param int|null $blog_id Blog ID to delete revisions for. Defaults to current blog when null.
 	 * @return int Number of revisions deleted.
 	 */
-	public static function delete_by_blog(): int {
+	public static function delete_by_blog( ?int $blog_id = null ): int {
 		global $wpdb;
 
 		$table_name = self::get_table_name();
-		$blog_id    = get_current_blog_id();
+		$blog_id    = null === $blog_id ? get_current_blog_id() : $blog_id;
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$result = $wpdb->delete(
@@ -457,5 +463,23 @@ class RevisionDatabase {
 				$blog_id
 			)
 		);
+	}
+
+	/**
+	 * Get total storage used by all revisions across every blog on the network.
+	 *
+	 * Used by the network settings page on multisite, where per-blog totals
+	 * aren't a useful summary — settings are network-wide so the storage
+	 * panel reports network-wide.
+	 *
+	 * @return int Total size in bytes.
+	 */
+	public static function get_network_total_storage(): int {
+		global $wpdb;
+
+		$table_name = self::get_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( "SELECT SUM(file_size) FROM {$table_name}" );
 	}
 }

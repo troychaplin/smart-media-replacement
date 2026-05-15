@@ -17,6 +17,20 @@ Prefix the change with one of these keywords:
 
 ## [Unreleased]
 
+## [1.2.0]
+
+### Breaking
+
+- **Multisite is now network-activate only.** The plugin declares `Network: true`, so on multisite WordPress no longer exposes a per-site activation link — a super admin must network-activate. Existing per-site activations are not migrated. Single-site installs are unaffected.
+- **Minimum PHP is now 7.4.** Previous releases advertised 7.0 but actually required 7.1+ for the `: void` return types used throughout the codebase. The minimum has been aligned with reality and raised to a currently-supported version.
+
+### Changed
+
+- **Settings on multisite are now network-wide.** All plugin options apply to every site on the network and are configured at Network Admin → Settings → Media Replacement (`manage_network_options` capability). The per-site Media → Replacement Settings page is no longer registered on multisite. Single-site installs continue to use Media → Replacement Settings unchanged.
+- **Multisite upgrade note.** Per-site settings stored under v1.1.1 are not carried forward to the network store — after upgrading, a super admin should visit the network settings page once and confirm the values.
+- **Retention cron is network-aware.** On multisite, the daily cleanup iterates every site so retention applies to revisions across the entire network, not just the main site.
+- **Plugin "Settings" shortcut on the Plugins screen** now points to the correct admin (network or site) in both contexts.
+
 ## [1.1.1]
 
 ### Added

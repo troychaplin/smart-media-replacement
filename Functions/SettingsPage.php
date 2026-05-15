@@ -18,20 +18,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Class SettingsPage
  *
- * Handles plugin settings registration and display.
+ * Handles plugin settings registration and display. On multisite the page is
+ * registered only in the network admin (the plugin is network-activate-only,
+ * so there is no per-site settings UI); on single-site it lives under the
+ * Media menu as before. Settings reads/writes go through the Settings
+ * resolver so the storage backend is transparent to the rest of the plugin.
  */
 class SettingsPage {
+
+	/**
+	 * Settings page slug, shared between single-site and network registrations.
+	 *
+	 * @var string
+	 */
+	const PAGE_SLUG = 'smr-settings';
 
 	/**
 	 * Constructor.
 	 */
 	public function __construct() {
-		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
+		if ( is_multisite() ) {
+			add_action( 'network_admin_menu', array( $this, 'add_network_settings_page' ) );
+		} else {
+			add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
+		}
+
+		// register_settings() is needed by the Settings API on single-site
+		// (options.php uses the allow-list it produces). It is a no-op on
+		// multisite because the network page POSTs to its own handler, but
+		// calling it unconditionally keeps the section/field registrations
+		// in one place — do_settings_sections() relies on them in both modes.
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 	}
 
 	/**
-	 * Add settings page to admin menu.
+	 * Add settings page to the site Media menu (single-site only).
 	 */
 	public function add_settings_page(): void {
 		add_submenu_page(
@@ -39,9 +60,95 @@ class SettingsPage {
 			__( 'Media Replacement Settings', 'smart-media-replacement' ),
 			__( 'Replacement Settings', 'smart-media-replacement' ),
 			'manage_options',
-			'smr-settings',
+			self::PAGE_SLUG,
 			array( $this, 'render_settings_page' )
 		);
+	}
+
+	/**
+	 * Add settings page to the network admin Settings menu (multisite only).
+	 *
+	 * The save handler is attached to `load-{hook}` rather than a separate
+	 * admin-post action because the form POSTs back to its own URL — this
+	 * keeps the entire settings flow in one place and avoids the round-trip
+	 * through admin-post.php that's awkward in the network admin context.
+	 */
+	public function add_network_settings_page(): void {
+		$hook = add_submenu_page(
+			'settings.php',
+			__( 'Media Replacement Settings', 'smart-media-replacement' ),
+			__( 'Media Replacement', 'smart-media-replacement' ),
+			'manage_network_options',
+			self::PAGE_SLUG,
+			array( $this, 'render_settings_page' )
+		);
+
+		if ( $hook ) {
+			add_action( 'load-' . $hook, array( $this, 'handle_network_save' ) );
+		}
+	}
+
+	/**
+	 * Handle the multisite network settings form submission.
+	 *
+	 * Runs on page load before render so we can redirect with a success flag
+	 * (Post/Redirect/Get) instead of re-rendering the form on the POST itself.
+	 */
+	public function handle_network_save(): void {
+		if ( 'POST' !== ( isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '' ) ) {
+			return;
+		}
+
+		if ( ! current_user_can( 'manage_network_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to update these settings.', 'smart-media-replacement' ), '', array( 'response' => 403 ) );
+		}
+
+		check_admin_referer( 'smr_save_network_settings', 'smr_network_settings_nonce' );
+
+		// Booleans — checkbox inputs are paired with a hidden "0" input in the
+		// markup so unchecked boxes still appear in $_POST. Treat any truthy
+		// value as on; anything else as off.
+		$bool_keys = array(
+			'smr_enable_revisions',
+			'smr_require_comment',
+			'smr_delete_files_on_deactivate',
+			'smr_delete_data_on_deactivate',
+		);
+		foreach ( $bool_keys as $key ) {
+			Settings::update( $key, ! empty( $_POST[ $key ] ) );
+		}
+
+		// Integers.
+		foreach ( array( 'smr_max_revisions', 'smr_retention_days' ) as $key ) {
+			$value = isset( $_POST[ $key ] ) ? absint( wp_unslash( $_POST[ $key ] ) ) : 0;
+			Settings::update( $key, $value );
+		}
+
+		// Enums — constrained to the same allowed values the UI offers so a
+		// tampered POST cannot wedge a garbage string into storage.
+		$version_type = isset( $_POST['smr_default_version_type'] )
+			? sanitize_text_field( wp_unslash( $_POST['smr_default_version_type'] ) )
+			: 'minor';
+		Settings::update(
+			'smr_default_version_type',
+			in_array( $version_type, array( 'major', 'minor' ), true ) ? $version_type : 'minor'
+		);
+
+		$file_types = isset( $_POST['smr_revision_file_types'] )
+			? sanitize_text_field( wp_unslash( $_POST['smr_revision_file_types'] ) )
+			: 'documents';
+		Settings::update(
+			'smr_revision_file_types',
+			in_array( $file_types, array( 'documents', 'images', 'all' ), true ) ? $file_types : 'documents'
+		);
+
+		wp_safe_redirect(
+			add_query_arg(
+				array( 'settings-updated' => 'true' ),
+				network_admin_url( 'settings.php?page=' . self::PAGE_SLUG )
+			)
+		);
+		exit;
 	}
 
 	/**
@@ -95,14 +202,14 @@ class SettingsPage {
 			'smr_revision_settings',
 			__( 'Revision Settings', 'smart-media-replacement' ),
 			array( $this, 'render_revision_section' ),
-			'smr-settings'
+			self::PAGE_SLUG
 		);
 
 		add_settings_field(
 			'smr_enable_revisions',
 			__( 'Enable Revisions', 'smart-media-replacement' ),
 			array( $this, 'render_enable_revisions_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -110,7 +217,7 @@ class SettingsPage {
 			'smr_revision_file_types',
 			__( 'Enable Revisions For', 'smart-media-replacement' ),
 			array( $this, 'render_revision_file_types_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -118,7 +225,7 @@ class SettingsPage {
 			'smr_max_revisions',
 			__( 'Maximum Revisions', 'smart-media-replacement' ),
 			array( $this, 'render_max_revisions_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -126,7 +233,7 @@ class SettingsPage {
 			'smr_retention_days',
 			__( 'Retention Period', 'smart-media-replacement' ),
 			array( $this, 'render_retention_days_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -134,7 +241,7 @@ class SettingsPage {
 			'smr_default_version_type',
 			__( 'Default Version Type', 'smart-media-replacement' ),
 			array( $this, 'render_default_version_type_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -142,7 +249,7 @@ class SettingsPage {
 			'smr_require_comment',
 			__( 'Require Comment', 'smart-media-replacement' ),
 			array( $this, 'render_require_comment_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_revision_settings'
 		);
 
@@ -151,14 +258,14 @@ class SettingsPage {
 			'smr_cleanup_settings',
 			__( 'Cleanup Settings', 'smart-media-replacement' ),
 			array( $this, 'render_cleanup_section' ),
-			'smr-settings'
+			self::PAGE_SLUG
 		);
 
 		add_settings_field(
 			'smr_delete_files_on_deactivate',
 			__( 'Delete Files on Deactivation', 'smart-media-replacement' ),
 			array( $this, 'render_delete_files_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_cleanup_settings'
 		);
 
@@ -166,7 +273,7 @@ class SettingsPage {
 			'smr_delete_data_on_deactivate',
 			__( 'Delete Database on Deactivation', 'smart-media-replacement' ),
 			array( $this, 'render_delete_data_field' ),
-			'smr-settings',
+			self::PAGE_SLUG,
 			'smr_cleanup_settings'
 		);
 
@@ -175,7 +282,7 @@ class SettingsPage {
 			'smr_storage_info',
 			__( 'Storage Information', 'smart-media-replacement' ),
 			array( $this, 'render_storage_section' ),
-			'smr-settings'
+			self::PAGE_SLUG
 		);
 	}
 
@@ -193,7 +300,8 @@ class SettingsPage {
 	 * Render settings page.
 	 */
 	public function render_settings_page(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		$capability = is_multisite() ? 'manage_network_options' : 'manage_options';
+		if ( ! current_user_can( $capability ) ) {
 			return;
 		}
 
@@ -206,13 +314,21 @@ class SettingsPage {
 		?>
 		<div class="wrap">
 			<h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-			<form action="options.php" method="post">
-				<?php
-				settings_fields( 'smr_settings' );
-				do_settings_sections( 'smr-settings' );
-				submit_button( __( 'Save Settings', 'smart-media-replacement' ) );
-				?>
-			</form>
+			<?php if ( is_multisite() ) : ?>
+				<form method="post" action="<?php echo esc_url( network_admin_url( 'settings.php?page=' . self::PAGE_SLUG ) ); ?>">
+					<?php wp_nonce_field( 'smr_save_network_settings', 'smr_network_settings_nonce' ); ?>
+					<?php do_settings_sections( self::PAGE_SLUG ); ?>
+					<?php submit_button( __( 'Save Settings', 'smart-media-replacement' ) ); ?>
+				</form>
+			<?php else : ?>
+				<form action="options.php" method="post">
+					<?php
+					settings_fields( 'smr_settings' );
+					do_settings_sections( self::PAGE_SLUG );
+					submit_button( __( 'Save Settings', 'smart-media-replacement' ) );
+					?>
+				</form>
+			<?php endif; ?>
 		</div>
 		<script>
 		(function() {
@@ -265,10 +381,18 @@ class SettingsPage {
 
 	/**
 	 * Render storage information section.
+	 *
+	 * On multisite the network admin page shows network-wide totals; on
+	 * single-site it shows the current site's totals.
 	 */
 	public function render_storage_section(): void {
-		$total_storage  = RevisionDatabase::get_total_storage();
-		$revision_count = $this->get_total_revision_count();
+		$is_multi       = is_multisite();
+		$total_storage  = $is_multi
+			? RevisionDatabase::get_network_total_storage()
+			: RevisionDatabase::get_total_storage();
+		$revision_count = $is_multi
+			? $this->get_network_total_revision_count()
+			: $this->get_total_revision_count();
 		$table_exists   = RevisionDatabase::table_exists();
 
 		echo '<table class="form-table" role="presentation">';
@@ -303,7 +427,7 @@ class SettingsPage {
 	 * Render enable revisions field.
 	 */
 	public function render_enable_revisions_field(): void {
-		$value = get_option( 'smr_enable_revisions', true );
+		$value = Settings::get( 'smr_enable_revisions', true );
 		?>
 		<input type="hidden" name="smr_enable_revisions" value="0">
 		<label>
@@ -318,7 +442,7 @@ class SettingsPage {
 	 * Render revision file types field.
 	 */
 	public function render_revision_file_types_field(): void {
-		$value = get_option( 'smr_revision_file_types', 'documents' );
+		$value = Settings::get( 'smr_revision_file_types', 'documents' );
 		?>
 		<select name="smr_revision_file_types">
 			<option value="documents" <?php selected( $value, 'documents' ); ?>><?php esc_html_e( 'Documents Only (PDFs, Word, Excel, etc.)', 'smart-media-replacement' ); ?></option>
@@ -333,7 +457,7 @@ class SettingsPage {
 	 * Render max revisions field.
 	 */
 	public function render_max_revisions_field(): void {
-		$value = get_option( 'smr_max_revisions', 10 );
+		$value = Settings::get( 'smr_max_revisions', 10 );
 		?>
 		<input type="number" name="smr_max_revisions" value="<?php echo esc_attr( $value ); ?>" min="0" max="100" class="small-text">
 		<p class="description"><?php esc_html_e( 'Maximum number of revisions to keep per file. Set to 0 for unlimited.', 'smart-media-replacement' ); ?></p>
@@ -344,7 +468,7 @@ class SettingsPage {
 	 * Render retention days field.
 	 */
 	public function render_retention_days_field(): void {
-		$value = get_option( 'smr_retention_days', 0 );
+		$value = Settings::get( 'smr_retention_days', 0 );
 		?>
 		<input type="number" name="smr_retention_days" value="<?php echo esc_attr( $value ); ?>" min="0" max="365" class="small-text">
 		<span><?php esc_html_e( 'days', 'smart-media-replacement' ); ?></span>
@@ -356,7 +480,7 @@ class SettingsPage {
 	 * Render default version type field.
 	 */
 	public function render_default_version_type_field(): void {
-		$value = get_option( 'smr_default_version_type', 'minor' );
+		$value = Settings::get( 'smr_default_version_type', 'minor' );
 		?>
 		<select name="smr_default_version_type">
 			<option value="minor" <?php selected( $value, 'minor' ); ?>><?php esc_html_e( 'Minor (1.0 → 1.1)', 'smart-media-replacement' ); ?></option>
@@ -370,7 +494,7 @@ class SettingsPage {
 	 * Render require comment field.
 	 */
 	public function render_require_comment_field(): void {
-		$value = get_option( 'smr_require_comment', false );
+		$value = Settings::get( 'smr_require_comment', false );
 		?>
 		<input type="hidden" name="smr_require_comment" value="0">
 		<label>
@@ -385,7 +509,7 @@ class SettingsPage {
 	 * Render delete files field.
 	 */
 	public function render_delete_files_field(): void {
-		$value = get_option( 'smr_delete_files_on_deactivate', false );
+		$value = Settings::get( 'smr_delete_files_on_deactivate', false );
 		?>
 		<input type="hidden" name="smr_delete_files_on_deactivate" value="0">
 		<label>
@@ -400,7 +524,7 @@ class SettingsPage {
 	 * Render delete data field.
 	 */
 	public function render_delete_data_field(): void {
-		$value = get_option( 'smr_delete_data_on_deactivate', false );
+		$value = Settings::get( 'smr_delete_data_on_deactivate', false );
 		?>
 		<input type="hidden" name="smr_delete_data_on_deactivate" value="0">
 		<label>
@@ -419,13 +543,12 @@ class SettingsPage {
 	private function get_total_revision_count(): int {
 		global $wpdb;
 
-		$table_name = RevisionDatabase::get_table_name();
-
 		if ( ! RevisionDatabase::table_exists() ) {
 			return 0;
 		}
 
-		$blog_id = get_current_blog_id();
+		$table_name = RevisionDatabase::get_table_name();
+		$blog_id    = get_current_blog_id();
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return (int) $wpdb->get_var(
@@ -434,5 +557,23 @@ class SettingsPage {
 				$blog_id
 			)
 		);
+	}
+
+	/**
+	 * Get total revision count across the entire network.
+	 *
+	 * @return int
+	 */
+	private function get_network_total_revision_count(): int {
+		global $wpdb;
+
+		if ( ! RevisionDatabase::table_exists() ) {
+			return 0;
+		}
+
+		$table_name = RevisionDatabase::get_table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name}" );
 	}
 }
