@@ -48,7 +48,7 @@ class ManageMedia {
 		);
 
 		// Get max revisions setting.
-		$max_revisions = (int) get_option( 'smr_max_revisions', 10 );
+		$max_revisions = (int) Settings::get( 'smr_max_revisions', 10 );
 
 		// Localize the script with necessary data.
 		wp_localize_script(
@@ -221,7 +221,7 @@ class ManageMedia {
 		// Get revision data from request. version_type is constrained to a
 		// known enum so a malformed input always falls back to 'minor' rather
 		// than reaching calculate_next_version() with garbage.
-		$raw_version_type = isset( $_POST['version_type'] ) ? sanitize_text_field( wp_unslash( $_POST['version_type'] ) ) : get_option( 'smr_default_version_type', 'minor' );
+		$raw_version_type = isset( $_POST['version_type'] ) ? sanitize_text_field( wp_unslash( $_POST['version_type'] ) ) : Settings::get( 'smr_default_version_type', 'minor' );
 		$version_type     = in_array( $raw_version_type, array( 'major', 'minor' ), true ) ? $raw_version_type : 'minor';
 		$comment          = isset( $_POST['comment'] ) ? sanitize_textarea_field( wp_unslash( $_POST['comment'] ) ) : '';
 
@@ -230,7 +230,7 @@ class ManageMedia {
 		// global toggle and the per-file-type filter, so this matches the JS
 		// logic that decides whether to show the comment field at all.
 		$require_comment = Helpers::is_revision_enabled_for_attachment( $attachment_id )
-			&& get_option( 'smr_require_comment', false );
+			&& Settings::get( 'smr_require_comment', false );
 		if ( $require_comment && empty( $comment ) ) {
 			wp_send_json_error( __( 'A comment is required when replacing files.', 'smart-media-replacement' ) );
 		}

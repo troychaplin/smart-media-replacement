@@ -59,10 +59,10 @@ class EditorIntegration {
 				'ajaxUrl'         => admin_url( 'admin-ajax.php' ),
 				'replaceNonce'    => wp_create_nonce( 'smart_media_replacement_nonce' ),
 				'revisionNonce'   => wp_create_nonce( 'smr_revision_nonce' ),
-				'enableRevisions' => (bool) get_option( 'smr_enable_revisions', true ),
-				'fileTypes'       => (string) get_option( 'smr_revision_file_types', 'documents' ),
-				'requireComment'  => (bool) get_option( 'smr_require_comment', false ),
-				'defaultVersion'  => (string) get_option( 'smr_default_version_type', 'minor' ),
+				'enableRevisions' => (bool) Settings::get( 'smr_enable_revisions', true ),
+				'fileTypes'       => (string) Settings::get( 'smr_revision_file_types', 'documents' ),
+				'requireComment'  => (bool) Settings::get( 'smr_require_comment', false ),
+				'defaultVersion'  => (string) Settings::get( 'smr_default_version_type', 'minor' ),
 			)
 		);
 

@@ -41,11 +41,11 @@ class Helpers {
 	 * @return bool Whether revisions are enabled.
 	 */
 	public static function is_revision_enabled_for_attachment( int $attachment_id ): bool {
-		if ( ! get_option( 'smr_enable_revisions', true ) ) {
+		if ( ! Settings::get( 'smr_enable_revisions', true ) ) {
 			return false;
 		}
 
-		$file_type_setting = get_option( 'smr_revision_file_types', 'documents' );
+		$file_type_setting = Settings::get( 'smr_revision_file_types', 'documents' );
 
 		if ( 'all' === $file_type_setting ) {
 			return true;

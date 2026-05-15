@@ -54,7 +54,7 @@ class RevisionManager {
 	 */
 	public function create_revision_before_replace( int $attachment_id, array $replacement_data = array() ) {
 		// Check if revisions are globally enabled.
-		if ( ! get_option( 'smr_enable_revisions', true ) ) {
+		if ( ! Settings::get( 'smr_enable_revisions', true ) ) {
 			return;
 		}
 
@@ -96,7 +96,7 @@ class RevisionManager {
 		}
 
 		// Determine version number.
-		$version_type = isset( $replacement_data['version_type'] ) ? $replacement_data['version_type'] : get_option( 'smr_default_version_type', 'minor' );
+		$version_type = isset( $replacement_data['version_type'] ) ? $replacement_data['version_type'] : Settings::get( 'smr_default_version_type', 'minor' );
 		$version_info = $this->calculate_next_version( $attachment_id, $version_type );
 		$comment      = isset( $replacement_data['comment'] ) ? sanitize_textarea_field( $replacement_data['comment'] ) : '';
 
@@ -215,7 +215,7 @@ class RevisionManager {
 		 * @param int $max_revisions  Maximum revisions to keep.
 		 * @param int $attachment_id  The attachment ID.
 		 */
-		$max_revisions = apply_filters( 'smr_max_revisions', (int) get_option( 'smr_max_revisions', 10 ), $attachment_id );
+		$max_revisions = apply_filters( 'smr_max_revisions', (int) Settings::get( 'smr_max_revisions', 10 ), $attachment_id );
 
 		$current_count = RevisionDatabase::get_count( $attachment_id );
 
@@ -272,6 +272,12 @@ class RevisionManager {
 
 	/**
 	 * Run scheduled cleanup for retention policy.
+	 *
+	 * On multisite the cron fires in the main site's context, so the
+	 * existing per-blog queries would only ever clean up blog 1. We
+	 * iterate every site with switch_to_blog so the same per-site code
+	 * path runs against the correct uploads dir and blog_id filter for
+	 * each one.
 	 */
 	public function run_cleanup(): void {
 		/**
@@ -279,20 +285,46 @@ class RevisionManager {
 		 *
 		 * @param int $days Retention days (0 = disabled).
 		 */
-		$retention_days = apply_filters( 'smr_retention_days', (int) get_option( 'smr_retention_days', 0 ), 0 );
+		$retention_days = apply_filters( 'smr_retention_days', (int) Settings::get( 'smr_retention_days', 0 ), 0 );
 
 		if ( $retention_days <= 0 ) {
 			return; // Retention policy disabled.
 		}
 
+		if ( is_multisite() ) {
+			$site_ids = get_sites(
+				array(
+					'fields' => 'ids',
+					'number' => 0,
+				)
+			);
+			foreach ( $site_ids as $site_id ) {
+				switch_to_blog( (int) $site_id );
+				$this->cleanup_current_site( $retention_days );
+				restore_current_blog();
+			}
+		} else {
+			$this->cleanup_current_site( $retention_days );
+		}
+	}
+
+	/**
+	 * Delete expired revisions for whichever blog is currently active.
+	 *
+	 * Extracted from run_cleanup so it can be invoked once per site under
+	 * a switch_to_blog loop on multisite, or directly on single-site —
+	 * the body is identical in both cases.
+	 *
+	 * @param int $retention_days Retention period in days.
+	 */
+	private function cleanup_current_site( int $retention_days ): void {
 		$expired = RevisionDatabase::get_expired_revisions( $retention_days );
 
 		if ( empty( $expired ) ) {
 			return;
 		}
 
-		$deleted_count = 0;
-		$grouped       = array();
+		$grouped = array();
 
 		// Group by attachment for action hook.
 		foreach ( $expired as $revision ) {
@@ -303,7 +335,6 @@ class RevisionManager {
 
 			// Delete database record.
 			RevisionDatabase::delete( $revision->id );
-			++$deleted_count;
 		}
 
 		// Fire actions for each attachment.
