@@ -46,6 +46,7 @@ class Settings {
 		'smr_require_comment'            => false,
 		'smr_delete_files_on_deactivate' => false,
 		'smr_delete_data_on_deactivate'  => false,
+		'smr_table_check_frequency'      => 'daily',
 	);
 
 	/**

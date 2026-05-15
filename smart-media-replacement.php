@@ -28,6 +28,26 @@ define( 'SMART_MEDIA_REPLACEMENT_VERSION', '1.2.0' );
 require_once SMART_MEDIA_REPLACEMENT_PLUGIN_PATH . 'vendor/autoload.php';
 
 /**
+ * Schedule or reschedule the database health-check cron event.
+ *
+ * Called on activation and whenever the frequency setting changes. Clears any
+ * existing event first so we never end up with duplicate schedules.
+ *
+ * @param string $frequency One of 'hourly', 'daily', 'weekly', or 'disabled'.
+ */
+function smr_reschedule_health_check( string $frequency ): void {
+	$timestamp = wp_next_scheduled( 'smr_db_health_check' );
+	if ( $timestamp ) {
+		wp_unschedule_event( $timestamp, 'smr_db_health_check' );
+	}
+
+	$valid = array( 'hourly', 'daily', 'weekly' );
+	if ( in_array( $frequency, $valid, true ) ) {
+		wp_schedule_event( time(), $frequency, 'smr_db_health_check' );
+	}
+}
+
+/**
  * Plugin activation hook.
  *
  * On multisite the plugin is network-activate-only (enforced by the
@@ -41,12 +61,14 @@ function smart_media_replacement_activate( $network_wide ) { // phpcs:ignore Gen
 	\Smart_Media_Replacement\RevisionDatabase::create_table();
 	\Smart_Media_Replacement\Settings::seed_defaults();
 
-	// Schedule cleanup cron if not already scheduled. Runs daily on the main
-	// site; the retention check inside the handler filters by the configured
-	// retention period (0 = disabled, so the cron exits early as a no-op).
+	// Schedule retention cleanup cron if not already scheduled.
 	if ( ! wp_next_scheduled( 'smr_cleanup_revisions' ) ) {
 		wp_schedule_event( time(), 'daily', 'smr_cleanup_revisions' );
 	}
+
+	// Schedule DB health-check cron at the configured frequency.
+	$frequency = \Smart_Media_Replacement\Settings::get( 'smr_table_check_frequency', 'daily' );
+	smr_reschedule_health_check( $frequency );
 }
 register_activation_hook( __FILE__, 'smart_media_replacement_activate' );
 
@@ -60,10 +82,14 @@ register_activation_hook( __FILE__, 'smart_media_replacement_activate' );
  * @param bool $network_wide Whether plugin is being deactivated network-wide.
  */
 function smart_media_replacement_deactivate( $network_wide ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
-	// Clear scheduled cron.
+	// Clear scheduled crons.
 	$timestamp = wp_next_scheduled( 'smr_cleanup_revisions' );
 	if ( $timestamp ) {
 		wp_unschedule_event( $timestamp, 'smr_cleanup_revisions' );
+	}
+	$timestamp = wp_next_scheduled( 'smr_db_health_check' );
+	if ( $timestamp ) {
+		wp_unschedule_event( $timestamp, 'smr_db_health_check' );
 	}
 
 	// On multisite the shared revisions table holds rows for every blog, so
@@ -149,3 +175,10 @@ new \Smart_Media_Replacement\RevisionManager();
 new \Smart_Media_Replacement\SettingsPage();
 new \Smart_Media_Replacement\RevisionUI();
 new \Smart_Media_Replacement\EditorIntegration();
+
+// Register WP-CLI commands. Loaded via require_once rather than the PSR-4
+// autoloader because the class extends WP_CLI_Command and must not be
+// referenced outside a WP-CLI runtime.
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	require_once SMART_MEDIA_REPLACEMENT_PLUGIN_PATH . 'Functions/CLI.php';
+}
