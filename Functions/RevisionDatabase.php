@@ -424,6 +424,89 @@ class RevisionDatabase {
 	}
 
 	/**
+	 * Get a batch of expired revisions using cursor-based pagination.
+	 *
+	 * Returns only the columns needed for deletion (id, file_path,
+	 * attachment_id) to keep memory usage low. Cursor pagination via
+	 * $after_id means each batch is stable even as prior rows are deleted
+	 * — unlike LIMIT/OFFSET, which shifts as rows disappear.
+	 *
+	 * @param int $days     Retention period in days.
+	 * @param int $limit    Maximum rows to return.
+	 * @param int $after_id Return rows with id greater than this value.
+	 * @return array Array of objects with id, file_path, attachment_id.
+	 */
+	public static function get_expired_revisions_batch( int $days, int $limit, int $after_id = 0 ): array {
+		global $wpdb;
+
+		$table_name = self::get_table_name();
+		$blog_id    = get_current_blog_id();
+		$cutoff     = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, file_path, attachment_id FROM {$table_name} WHERE blog_id = %d AND created_at < %s AND id > %d ORDER BY id ASC LIMIT %d",
+				$blog_id,
+				$cutoff,
+				$after_id,
+				$limit
+			)
+		);
+	}
+
+	/**
+	 * Delete multiple revisions in a single query.
+	 *
+	 * @param int[] $ids Revision IDs to delete (must belong to the current blog).
+	 * @return int Number of rows deleted.
+	 */
+	public static function delete_by_ids( array $ids ): int {
+		global $wpdb;
+
+		if ( empty( $ids ) ) {
+			return 0;
+		}
+
+		$table_name      = self::get_table_name();
+		$blog_id         = get_current_blog_id();
+		$id_placeholders = implode( ', ', array_fill( 0, count( $ids ), '%d' ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$table_name} WHERE blog_id = %d AND id IN ({$id_placeholders})",
+				array_merge( array( $blog_id ), $ids )
+			)
+		);
+
+		return $result ? (int) $result : 0;
+	}
+
+	/**
+	 * Count revisions older than specified days for the current blog.
+	 *
+	 * @param int $days Retention period in days.
+	 * @return int Number of expired revisions.
+	 */
+	public static function count_expired_revisions( int $days ): int {
+		global $wpdb;
+
+		$table_name = self::get_table_name();
+		$blog_id    = get_current_blog_id();
+		$cutoff     = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table_name} WHERE blog_id = %d AND created_at < %s",
+				$blog_id,
+				$cutoff
+			)
+		);
+	}
+
+	/**
 	 * Get total storage used by revisions for an attachment.
 	 *
 	 * @param int $attachment_id Attachment ID.

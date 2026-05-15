@@ -25,10 +25,11 @@ class RevisionManager {
 	 * Constructor.
 	 */
 	public function __construct() {
-		// Self-heal: ensure the revisions table exists on every admin load.
-		// Covers DB resets, manual drops, and aborted activations where the
-		// only previous recovery path was deactivate/reactivate.
-		add_action( 'admin_init', array( RevisionDatabase::class, 'ensure_table' ) );
+		// Self-heal: verify the revisions table on a configurable cron schedule
+		// rather than on every admin page load. Covers DB resets, manual drops,
+		// and aborted activations. Frequency is controlled via plugin settings;
+		// use WP-CLI for immediate on-demand repair.
+		add_action( 'smr_db_health_check', array( RevisionDatabase::class, 'ensure_table' ) );
 
 		// Hook into file replacement to create revisions.
 		add_action( 'smart_media_replacement_before_replace', array( $this, 'create_revision_before_replace' ), 10, 2 );
@@ -273,11 +274,11 @@ class RevisionManager {
 	/**
 	 * Run scheduled cleanup for retention policy.
 	 *
-	 * On multisite the cron fires in the main site's context, so the
-	 * existing per-blog queries would only ever clean up blog 1. We
-	 * iterate every site with switch_to_blog so the same per-site code
-	 * path runs against the correct uploads dir and blog_id filter for
-	 * each one.
+	 * On multisite the cron fires in the main site's context, so per-blog
+	 * queries would only ever clean up blog 1 without the switch_to_blog
+	 * loop. A time budget prevents the job from exceeding PHP's
+	 * max_execution_time — any sites not reached will be processed on the
+	 * next daily run.
 	 */
 	public function run_cleanup(): void {
 		/**
@@ -288,8 +289,22 @@ class RevisionManager {
 		$retention_days = apply_filters( 'smr_retention_days', (int) Settings::get( 'smr_retention_days', 0 ), 0 );
 
 		if ( $retention_days <= 0 ) {
-			return; // Retention policy disabled.
+			return;
 		}
+
+		// Budget: leave 10 s under the server's max_execution_time.
+		// If max_execution_time is 0 (unlimited) use 60 s so the filter
+		// still gives operators a meaningful knob.
+		$max_exec = (int) ini_get( 'max_execution_time' );
+
+		/**
+		 * Filter the number of seconds the cron cleanup may run before
+		 * stopping gracefully. Remaining sites process on the next run.
+		 *
+		 * @param int $seconds Time budget in seconds.
+		 */
+		$budget   = (int) apply_filters( 'smr_cleanup_time_limit', $max_exec > 0 ? max( 5, $max_exec - 10 ) : 60 );
+		$deadline = microtime( true ) + $budget;
 
 		if ( is_multisite() ) {
 			$site_ids = get_sites(
@@ -299,48 +314,76 @@ class RevisionManager {
 				)
 			);
 			foreach ( $site_ids as $site_id ) {
+				if ( microtime( true ) >= $deadline ) {
+					break; // Out of time; remaining sites process on next run.
+				}
 				switch_to_blog( (int) $site_id );
-				$this->cleanup_current_site( $retention_days );
+				self::cleanup_site( $retention_days, $deadline );
 				restore_current_blog();
 			}
 		} else {
-			$this->cleanup_current_site( $retention_days );
+			self::cleanup_site( $retention_days, $deadline );
 		}
 	}
 
 	/**
 	 * Delete expired revisions for whichever blog is currently active.
 	 *
-	 * Extracted from run_cleanup so it can be invoked once per site under
-	 * a switch_to_blog loop on multisite, or directly on single-site —
-	 * the body is identical in both cases.
+	 * Processes rows in chunks to keep peak memory low and avoid loading
+	 * an unbounded result set. Cursor-based pagination (WHERE id > last)
+	 * keeps each batch stable even as prior rows are deleted.
 	 *
-	 * @param int $retention_days Retention period in days.
+	 * Pass a non-zero $deadline to stop early when running under a time
+	 * budget (WP-Cron). Pass 0.0 for no limit (WP-CLI).
+	 *
+	 * @param int   $retention_days Retention period in days.
+	 * @param float $deadline       microtime(true) deadline; 0.0 = unlimited.
+	 * @return int Number of revisions deleted.
 	 */
-	private function cleanup_current_site( int $retention_days ): void {
-		$expired = RevisionDatabase::get_expired_revisions( $retention_days );
+	public static function cleanup_site( int $retention_days, float $deadline = 0.0 ): int {
+		/**
+		 * Filter the number of expired revisions to process per DB round-trip.
+		 *
+		 * @param int $chunk_size Rows per batch.
+		 */
+		$chunk_size  = max( 1, (int) apply_filters( 'smr_cleanup_chunk_size', 100 ) );
+		$last_id     = 0;
+		$deleted     = 0;
+		$batch_count = 0;
 
-		if ( empty( $expired ) ) {
-			return;
-		}
+		do {
+			if ( $deadline > 0.0 && microtime( true ) >= $deadline ) {
+				break;
+			}
 
-		$grouped = array();
+			$batch       = RevisionDatabase::get_expired_revisions_batch( $retention_days, $chunk_size, $last_id );
+			$batch_count = count( $batch );
 
-		// Group by attachment for action hook.
-		foreach ( $expired as $revision ) {
-			$grouped[ $revision->attachment_id ][] = $revision->id;
+			if ( 0 === $batch_count ) {
+				break;
+			}
 
-			// Delete file.
-			RevisionStorage::delete_revision_file( $revision->file_path );
+			$ids     = array();
+			$grouped = array();
 
-			// Delete database record.
-			RevisionDatabase::delete( $revision->id );
-		}
+			foreach ( $batch as $revision ) {
+				$id                          = (int) $revision->id;
+				$attachment_id               = (int) $revision->attachment_id;
+				$ids[]                       = $id;
+				$grouped[ $attachment_id ][] = $id;
+				$last_id                     = max( $last_id, $id );
+				RevisionStorage::delete_revision_file( $revision->file_path );
+			}
 
-		// Fire actions for each attachment.
-		foreach ( $grouped as $attachment_id => $revision_ids ) {
-			do_action( 'smr_revisions_cleaned', $attachment_id, $revision_ids );
-		}
+			RevisionDatabase::delete_by_ids( $ids );
+			$deleted += count( $ids );
+
+			foreach ( $grouped as $attachment_id => $revision_ids ) {
+				do_action( 'smr_revisions_cleaned', $attachment_id, $revision_ids );
+			}
+		} while ( $batch_count === $chunk_size );
+
+		return $deleted;
 	}
 
 	/**

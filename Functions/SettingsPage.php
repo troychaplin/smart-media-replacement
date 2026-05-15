@@ -49,6 +49,12 @@ class SettingsPage {
 		// calling it unconditionally keeps the section/field registrations
 		// in one place — do_settings_sections() relies on them in both modes.
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+
+		// On single-site, reschedule the health-check cron whenever the
+		// frequency setting is saved via options.php.
+		if ( ! is_multisite() ) {
+			add_action( 'update_option_smr_table_check_frequency', array( $this, 'handle_frequency_change' ), 10, 2 );
+		}
 	}
 
 	/**
@@ -142,6 +148,14 @@ class SettingsPage {
 			in_array( $file_types, array( 'documents', 'images', 'all' ), true ) ? $file_types : 'documents'
 		);
 
+		$valid_frequencies = array( 'hourly', 'daily', 'weekly', 'disabled' );
+		$table_check_freq  = isset( $_POST['smr_table_check_frequency'] )
+			? sanitize_text_field( wp_unslash( $_POST['smr_table_check_frequency'] ) )
+			: 'daily';
+		$table_check_freq  = in_array( $table_check_freq, $valid_frequencies, true ) ? $table_check_freq : 'daily';
+		Settings::update( 'smr_table_check_frequency', $table_check_freq );
+		smr_reschedule_health_check( $table_check_freq );
+
 		wp_safe_redirect(
 			add_query_arg(
 				array( 'settings-updated' => 'true' ),
@@ -194,6 +208,13 @@ class SettingsPage {
 				'type'              => 'boolean',
 				'default'           => false,
 				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
+		register_setting(
+			'smr_settings',
+			'smr_table_check_frequency',
+			array(
+				'sanitize_callback' => array( $this, 'sanitize_table_check_frequency' ),
 			)
 		);
 
@@ -273,6 +294,14 @@ class SettingsPage {
 			'smr_delete_data_on_deactivate',
 			__( 'Delete Database on Deactivation', 'smart-media-replacement' ),
 			array( $this, 'render_delete_data_field' ),
+			self::PAGE_SLUG,
+			'smr_cleanup_settings'
+		);
+
+		add_settings_field(
+			'smr_table_check_frequency',
+			__( 'Database Health Check', 'smart-media-replacement' ),
+			array( $this, 'render_table_check_frequency_field' ),
 			self::PAGE_SLUG,
 			'smr_cleanup_settings'
 		);
@@ -533,6 +562,43 @@ class SettingsPage {
 		</label>
 		<p class="description"><?php esc_html_e( 'This will permanently delete all revision history from the database.', 'smart-media-replacement' ); ?></p>
 		<?php
+	}
+
+	/**
+	 * Render the database health check frequency field.
+	 */
+	public function render_table_check_frequency_field(): void {
+		$value = Settings::get( 'smr_table_check_frequency', 'daily' );
+		?>
+		<select name="smr_table_check_frequency">
+			<option value="hourly" <?php selected( $value, 'hourly' ); ?>><?php esc_html_e( 'Hourly', 'smart-media-replacement' ); ?></option>
+			<option value="daily" <?php selected( $value, 'daily' ); ?>><?php esc_html_e( 'Daily (recommended)', 'smart-media-replacement' ); ?></option>
+			<option value="weekly" <?php selected( $value, 'weekly' ); ?>><?php esc_html_e( 'Weekly', 'smart-media-replacement' ); ?></option>
+			<option value="disabled" <?php selected( $value, 'disabled' ); ?>><?php esc_html_e( 'Disabled (manual / WP-CLI only)', 'smart-media-replacement' ); ?></option>
+		</select>
+		<p class="description"><?php esc_html_e( 'How often to automatically verify the revisions table exists and recreate it if missing. On large networks, daily or weekly reduces unnecessary database queries. Disable if you prefer to manage this manually via WP-CLI.', 'smart-media-replacement' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Sanitize and apply the table check frequency on single-site save.
+	 *
+	 * @param string $value Submitted value.
+	 * @return string
+	 */
+	public function sanitize_table_check_frequency( string $value ): string {
+		$allowed = array( 'hourly', 'daily', 'weekly', 'disabled' );
+		return in_array( $value, $allowed, true ) ? $value : 'daily';
+	}
+
+	/**
+	 * Reschedule the health-check cron when the frequency option changes (single-site).
+	 *
+	 * @param mixed  $old_value Previous option value.
+	 * @param string $new_value New option value.
+	 */
+	public function handle_frequency_change( $old_value, string $new_value ): void {
+		smr_reschedule_health_check( $new_value );
 	}
 
 	/**

@@ -77,9 +77,16 @@ Ever updated a PDF and realized half your site links to the old version? Or repl
 * Automatic row and file cleanup when a site is deleted
 * Single-site installs work exactly as before — settings and storage stay per-site, no network behavior involved
 
+**WP-CLI**
+
+* `wp smr db check` — verify the revisions table exists (non-zero exit code if missing, safe for CI pipelines)
+* `wp smr db repair` — recreate the table if missing; idempotent, safe to run when the table already exists
+* `wp smr db status` — revision counts and storage usage; `--network` for a per-site breakdown on multisite
+* `wp smr db cleanup` — delete expired revisions immediately, with `--dry-run` to preview and `--network` for all sites
+
 **Other**
 
-* Self-healing database table on every admin load
+* Self-healing database table via configurable scheduled check (hourly, daily, weekly, or disabled); use `wp smr db repair` for on-demand recovery
 * Developer hooks throughout for custom integrations
 
 = Privacy =
@@ -165,6 +172,10 @@ If WordPress automatically created a `-scaled` variant (typical for uploads over
 = I have revisions enabled but I don't see any history. Why? =
 
 Revisions are created on **replacement**, not on the original upload — so a brand-new attachment shows no history until you've replaced it at least once. Also check Media → Replacement Settings: the "Enable Revisions For" option lets you scope revisions to documents only, images only, or all file types. If your attachment's type isn't covered, no revisions will be tracked.
+
+= Is there a WP-CLI interface? =
+
+Yes. The plugin ships with `wp smr db check`, `wp smr db repair`, `wp smr db status`, and `wp smr db cleanup`. These are useful in deployment pipelines, after database restores, and on large multisite networks where you want to run retention cleanup on a real system cron instead of relying on WP-Cron. All commands support `--network` and `--site-id=<id>` on multisite; `wp smr db cleanup` also accepts `--dry-run` and `--yes`.
 
 = Do I need special permissions? =
 

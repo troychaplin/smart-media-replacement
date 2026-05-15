@@ -17,6 +17,18 @@ Prefix the change with one of these keywords:
 
 ## [Unreleased]
 
+### Added
+
+- **WP-CLI commands** under `wp smr db`: `check` (verify the revisions table exists), `repair` (recreate it if missing), `status` (revision counts and storage usage, with `--network` for a per-site breakdown), and `cleanup` (delete expired revisions on demand). All commands support `--site-id=<id>` and `--network` on multisite; `cleanup` additionally accepts `--dry-run` and `--yes`.
+- **Database health-check cron** (`smr_db_health_check`). The table self-heal that previously ran on every admin page load is now a configurable scheduled event (hourly / daily / weekly / disabled), reducing unnecessary database queries on large networks. The frequency is controlled via a new "Database Health Check" setting. When set to disabled, use `wp smr db repair` for on-demand recovery.
+- **`smr_cleanup_time_limit` filter** — lets operators set the maximum number of seconds the daily retention cron may run before stopping gracefully. Defaults to `max_execution_time − 10 s` (floor 5 s), or 60 s when `max_execution_time` is unlimited.
+- **`smr_cleanup_chunk_size` filter** — controls how many expired revisions are processed per database round-trip during cleanup. Default 100.
+
+### Changed
+
+- **Retention cleanup is now chunked and time-bounded.** `RevisionManager::cleanup_site()` processes expired revisions in configurable batches (default 100 rows) using cursor-based pagination, replacing the previous unbounded `SELECT *`. A single `DELETE … WHERE id IN (…)` per chunk replaces the prior per-row deletes. On multisite the cron stops iterating sites when the time budget is exhausted, with remaining sites handled on the next daily run.
+- **`RevisionManager::cleanup_site()` is now public and static**, allowing it to be called directly from WP-CLI without instantiating the class and without a time limit.
+
 ## [1.2.0]
 
 ### Breaking
