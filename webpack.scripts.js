@@ -7,6 +7,7 @@ module.exports = {
 		'smart-media-replacement': path.resolve(__dirname, 'src/smart-media-replacement.js'),
 		'revision-ui': path.resolve(__dirname, 'src/revision-ui.css'),
 		editor: path.resolve(__dirname, 'src/editor.js'),
+		'media-audit': path.resolve(__dirname, 'src/media-audit/index.js'),
 	},
 	output: {
 		...defaultConfig.output,

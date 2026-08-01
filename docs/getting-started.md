@@ -2,8 +2,8 @@
 
 ## Requirements
 
-- WordPress 6.6 or higher
-- PHP 7.0 or higher
+- WordPress 7.0 or higher
+- PHP 8.0 or higher
 - User must have `edit_post` capability for the attachment
 
 ## Installation

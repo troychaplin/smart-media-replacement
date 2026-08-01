@@ -1,14 +1,14 @@
 === Smart Media Replacement ===
 Contributors:      areziaal
-Tags:              media, replace, revisions, attachment, pdf
-Requires at least: 6.6
+Tags:              media, replace, revisions, media library, unused media
+Requires at least: 7.0
 Tested up to:      7.0
-Stable tag:        1.2.1
-Requires PHP:      7.4
+Stable tag:        1.3.0
+Requires PHP:      8.0
 License:           GPL-2.0-or-later
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
-Replace media files in place — same URL, new content, no broken links. Includes versioned revision history with one-click rollback.
+Replace media files in place — same URL, new content, no broken links. Includes revision history with one-click rollback, and a media audit that shows which files are actually used.
 
 == Description ==
 
@@ -22,6 +22,8 @@ Ever updated a PDF and realized half your site links to the old version? Or repl
 
 **Safe by default.** The plugin validates filenames, file types, and image dimensions to keep your URLs intact and your layouts unbroken. WordPress's auto-scaled images are handled transparently. Revisions land in a database table that's self-healing on every admin load, and the plugin's settings page gives you control over how many revisions to keep, how long to retain them, and which file types are tracked.
 
+**Know what's actually being used.** The Media Audit screen builds an index of every post, page and template that references each file in your library. See at a glance which files are used and where, which are unused and safe to delete, and which images are embedded without alt text. Bulk-delete unused files with confidence — the delete controls only appear for files nothing references.
+
 = Use cases =
 
 * **Monthly reports and newsletters** — Update PDFs linked from past emails without breaking any of those links.
@@ -30,6 +32,8 @@ Ever updated a PDF and realized half your site links to the old version? Or repl
 * **Image updates** — Refresh product photos, blog hero images, and marketing assets without breaking responsive sizes or SEO.
 * **Typo fixes in published assets** — Fix errors in infographics, downloadable guides, or e-books without scrambling to update references across your site.
 * **Versioned downloads** — White papers, e-books, technical docs that need to stay at a stable URL while preserving older versions on demand.
+* **Media library cleanup** — Find the files nothing references and reclaim disk space, without guessing whether something is still in use.
+* **Accessibility sweeps** — Surface every image embedded in content without alt text, in one filterable list.
 
 = Features =
 
@@ -86,7 +90,12 @@ Ever updated a PDF and realized half your site links to the old version? Or repl
 
 **Other**
 
-* Self-healing database table via configurable scheduled check (hourly, daily, weekly, or disabled); use `wp smr db repair` for on-demand recovery
+* Self-healing database tables via configurable scheduled check (hourly, daily, weekly, or disabled); use `wp smr db repair` for on-demand recovery
+* Media Audit dashboard listing every file with its usage count, type, size, alt text and upload date
+* Filter by where a file is used (block, featured image, content, post meta), by media type, by used/unused, and by missing alt text
+* "Used In" popover listing the exact posts referencing a file, with edit links
+* Bulk delete restricted to unused files only
+* Index stays current as you edit — saving, trashing or deleting a post updates it without a rescan
 * Developer hooks throughout for custom integrations
 
 = Privacy =
@@ -103,10 +112,19 @@ This plugin is fully self-contained and respects your privacy:
 1. Install from the WordPress plugin directory, or upload the `smart-media-replacement` folder to `/wp-content/plugins/`
 2. Activate through the Plugins menu in WordPress
 3. (Optional) Visit Media → Replacement Settings to configure revision history behavior
+4. (Optional) Visit Media → Media Audit and run a scan to build the media usage index
+
+= Uninstalling =
+
+Deactivating the plugin leaves your data alone unless you opted in to the deletion settings. **Deleting** the plugin removes everything it owns: the revisions table, the media audit tables, all plugin options, cached file-size metadata, scheduled events, and stored revision files. That is irreversible, so export anything you want to keep first. On a large network, run `wp plugin uninstall smart-media-replacement` from WP-CLI so the per-site cleanup isn't bounded by a web request.
 
 = Multisite =
 
 On WordPress multisite the plugin is network-activate only — activate it once from Network Admin → Plugins, then configure it at Network Admin → Settings → Media Replacement. The settings you choose apply to every site on the network. There is no per-site settings page on multisite.
+
+The Media Audit works differently from the settings, deliberately: the audit index is built **per site**, because it indexes that site's own content. Each site gets its own Media → Media Audit screen and runs its own scan. Audit tables are created for every existing site on network activation, and automatically for any site created afterwards.
+
+One caveat worth knowing: WP-Cron only runs for a site that is receiving traffic, so a scan started on a quiet subsite may appear to stall. Use `wp smr audit scan --site-id=<id>` (or `--network` for every site) to build indexes reliably from the command line.
 
 == Usage ==
 
@@ -130,6 +148,16 @@ On WordPress multisite the plugin is network-activate only — activate it once 
 * In the Media Library list view, the **Revisions** row action opens the full revision history for that file
 * On the attachment edit screen, the **View Revisions** button opens the same panel
 * From either, you can download any past version individually or as a ZIP, and restore any revision with one click
+
+= Auditing your media library =
+
+1. Go to **Media → Media Audit**
+2. Click **Scan Now** and let the index build — progress is shown in place
+3. Use the filter chips to narrow to unused files, a media type, a usage location, or images missing alt text
+4. Click a usage count to see exactly which posts reference that file
+5. Select unused files and delete them in bulk — the delete controls only appear for files nothing references
+
+On multisite, run the scan on each site, or use `wp smr audit scan --network` to build every site's index at once.
 
 == Frequently Asked Questions ==
 
@@ -175,7 +203,27 @@ Revisions are created on **replacement**, not on the original upload — so a br
 
 = Is there a WP-CLI interface? =
 
-Yes. The plugin ships with `wp smr db check`, `wp smr db repair`, `wp smr db status`, and `wp smr db cleanup`. These are useful in deployment pipelines, after database restores, and on large multisite networks where you want to run retention cleanup on a real system cron instead of relying on WP-Cron. All commands support `--network` and `--site-id=<id>` on multisite; `wp smr db cleanup` also accepts `--dry-run` and `--yes`.
+Yes. The plugin ships with `wp smr db check`, `wp smr db repair`, `wp smr db status`, and `wp smr db cleanup`, plus `wp smr audit scan`, `wp smr audit status`, and `wp smr audit clear` for the Media Audit index. These are useful in deployment pipelines, after database restores, and on large multisite networks where you want to run retention cleanup on a real system cron instead of relying on WP-Cron. All commands support `--network` and `--site-id=<id>` on multisite; `wp smr db cleanup` also accepts `--dry-run` and `--yes`.
+
+= How does the Media Audit know where a file is used? =
+
+It scans posts, pages and templates for references in block markup (image, cover, gallery, file, video, audio, media & text), in classic content (img tags, gallery and caption shortcodes, and links into your uploads directory), in featured images, and in page-builder post meta (Elementor and Beaver Builder by default, extendable via the `smr_audit_scanned_meta_keys` filter). Every candidate is validated against your real attachments, so stale markup can't inflate usage counts.
+
+= Is it safe to delete everything marked "Unused"? =
+
+"Unused" means nothing the scanner looks at references the file. That covers the overwhelming majority of cases, but it can't see references that live outside scanned content — hardcoded URLs in theme templates, custom post types you haven't added via the filter, or files linked from an external site. Review before bulk deleting, and note that "Unused" is only meaningful after a scan has completed.
+
+= Do I have to re-scan after every edit? =
+
+No. The index updates incrementally as you work — saving, trashing or permanently deleting a post updates its references immediately, and deleting an attachment removes it from the list. A full scan is only needed to build the index initially, or to rebuild it after importing content in bulk.
+
+= Why is the Media Audit per site on multisite, when settings are network-wide? =
+
+Because the index is derived from one site's own content. A network-level audit screen would have nothing meaningful to show, and each site's index needs to disappear when that site is deleted. Settings are shared because they describe plugin behaviour, not content.
+
+= Can I turn the Media Audit off? =
+
+Yes. Untick "Enable Media Audit" in the settings. That hides the screen and stops posts being indexed when saved. Existing index data is left in place, so re-enabling it doesn't require a rescan.
 
 = Do I need special permissions? =
 
@@ -190,8 +238,22 @@ Yes — you need the `edit_post` capability for the specific attachment. This ma
 5. Same replacement flow from the attachment edit screen, with the optional replacement note.
 6. Browse, restore, or download past versions — or grab the full history as a ZIP — all from one panel.
 7. Configure revision retention, file-type tracking, comment requirements, and deactivation cleanup from one settings page.
+8. The Media Audit dashboard — every file with its usage count, type, size and alt text.
+9. Filter by where a file is used, its type, whether it's used at all, and whether it's missing alt text.
+10. The "Used In" popover lists the exact posts referencing a file, with edit links.
+11. Build the index from the scan toolbar and watch progress in place.
 
 == Changelog ==
+
+= What's new in 1.3.0 =
+
+**Media Audit.** A new Media → Media Audit screen indexes which posts, pages and templates reference each file in your library. Find unused files, see exactly where a file is used before deleting it, and spot images embedded without alt text. Filter by usage location, media type, used/unused, and missing alt. Bulk delete is restricted to unused files.
+
+**New WP-CLI commands.** `wp smr audit scan`, `wp smr audit status` and `wp smr audit clear`, all supporting `--site-id` and `--network` on multisite. On a network these are the reliable way to build indexes, since WP-Cron only fires for sites receiving traffic.
+
+**Breaking:** this release requires **WordPress 7.0** and **PHP 8.0**. The audit interface is built on the WordPress DataViews component, which is only available in WordPress 7.0 and later.
+
+**Also changed:** "Delete database on deactivation" now covers the audit tables as well as the revisions table. Deleting the plugin now removes all plugin data including stored revision files — see the Uninstalling section above. Media Library scripts are now cache-busted per release rather than pinned to a fixed version.
 
 = What's new in 1.2.0 =
 

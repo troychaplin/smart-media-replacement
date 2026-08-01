@@ -47,6 +47,7 @@ class Settings {
 		'smr_delete_files_on_deactivate' => false,
 		'smr_delete_data_on_deactivate'  => false,
 		'smr_table_check_frequency'      => 'daily',
+		'smr_enable_audit'               => true,
 	);
 
 	/**
@@ -93,12 +94,15 @@ class Settings {
 	/**
 	 * Seed defaults on activation for any option that is currently unset.
 	 *
-	 * Mirrors the original per-option `if ( false === get_option(...) ) add_option(...)`
-	 * pattern, but routes through the resolver so it works on multisite.
+	 * Uses null as the "missing" sentinel rather than false. get_option() and
+	 * get_site_option() return the supplied default only when the key is
+	 * absent, so null distinguishes "never set" from a legitimately stored
+	 * falsy value — which matters for the boolean settings that default to
+	 * true and would otherwise risk being re-enabled on reactivation.
 	 */
 	public static function seed_defaults(): void {
 		foreach ( self::DEFAULTS as $key => $fallback ) {
-			if ( false === self::get( $key, false ) ) {
+			if ( null === self::get( $key, null ) ) {
 				self::update( $key, $fallback );
 			}
 		}

@@ -1,0 +1,179 @@
+@import "@wordpress/dataviews/build-style/style.css";
+
+.smr-audit-app {
+	max-width: 1400px;
+	margin: 20px 20px 20px 0;
+}
+
+.smr-audit-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+}
+
+.smr-audit-scan-status {
+	color: #646970;
+}
+
+.smr-audit-progress {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 1;
+}
+
+.smr-audit-progress-track {
+	height: 8px;
+	background: #dcdcde;
+	border-radius: 4px;
+	flex: 1;
+	max-width: 280px;
+	overflow: hidden;
+}
+
+.smr-audit-progress-bar {
+	height: 100%;
+	background: #007cba;
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.smr-audit-progress-label {
+	font-size: 13px;
+	color: #646970;
+	white-space: nowrap;
+}
+
+.smr-audit-thumb {
+	display: block;
+	object-fit: cover;
+	border-radius: 2px;
+}
+
+.smr-audit-thumb-icon {
+	font-size: 48px;
+	width: 60px;
+	height: 60px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #c3c4c7;
+}
+
+.smr-audit-title-cell {
+	line-height: 1.4;
+}
+
+.smr-audit-row-actions {
+	visibility: hidden;
+	font-size: 12px;
+	margin-top: 3px;
+	color: #646970;
+
+	a {
+		color: #2271b1;
+		text-decoration: none;
+
+		&:hover {
+			color: #135e96;
+			text-decoration: underline;
+		}
+
+		&.submitdelete {
+			color: #b32d2e;
+
+			&:hover {
+				color: #8a2122;
+			}
+		}
+	}
+}
+
+tr:hover .smr-audit-row-actions,
+.smr-audit-title-cell:hover .smr-audit-row-actions {
+	visibility: visible;
+}
+
+.smr-audit-unused {
+	color: #b32d2e;
+	font-style: italic;
+}
+
+.smr-audit-unscanned {
+	color: #b32d2e;
+	font-style: italic;
+}
+
+.smr-audit-used-in {
+	display: inline-flex;
+	align-items: center;
+}
+
+.smr-audit-popover {
+	padding: 12px 16px;
+	min-width: 220px;
+	max-width: 360px;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+.smr-audit-no-alt {
+	display: inline-block;
+	background: #fcf0f1;
+	color: #b32d2e;
+	border: 1px solid #f8d7da;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.smr-audit-has-alt {
+	color: #50575e;
+	font-size: 12px;
+	max-width: 200px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	display: inline-block;
+}
+
+.smr-audit-locations-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+
+	li {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 6px 10px;
+		border-bottom: 1px solid #f0f0f1;
+
+		&:last-child {
+			border-bottom: none;
+		}
+
+		// Targeted by an explicit class rather than a bare `a`, so its
+		// specificity is not lower than the `a:hover` rule earlier in this
+		// file (which would be a descending-specificity cascade hazard).
+		a.smr-audit-location-link {
+			flex: 1;
+			font-size: 13px;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+	}
+}
+
+.smr-audit-ref-type {
+	font-size: 11px;
+	color: #8c8f94;
+	white-space: nowrap;
+	text-transform: capitalize;
+	flex-shrink: 0;
+}

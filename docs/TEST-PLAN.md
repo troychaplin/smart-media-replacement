@@ -8,8 +8,8 @@ This document outlines the testing procedures for the Smart Media Replacement pl
 
 ## Prerequisites
 
-1. WordPress 6.6+ installed
-2. PHP 7.0+
+1. WordPress 7.0+ installed
+2. PHP 8.0+
 3. Plugin activated
 4. Sample media files ready:
    - Image file (e.g., `test-image.jpg`, 1920x1080)
@@ -466,6 +466,79 @@ SHOW TABLES LIKE '%smr_revisions%';
 **Expected Results:**
 - Appropriate error message
 - No partial revision created
+
+---
+
+## Phase 11: Media Audit Tests
+
+### 11.1 Provisioning
+
+- [ ] After activation, `wp_smr_audit_index` and `wp_smr_audit_summary` exist
+- [ ] Option `smr_audit_db_version` is set
+- [ ] **No** scan cron is scheduled on activation (`wp cron event list | grep smr_audit`)
+- [ ] Manually `DROP TABLE wp_smr_audit_index`, then load Media → Media Audit — the table is recreated
+- [ ] Drop it again and run `wp cron event run smr_db_health_check` — the table is recreated
+- [ ] Confirm no `SHOW TABLES` query runs on a front-end page load (Query Monitor)
+
+### 11.2 Scanning
+
+- [ ] Media → Media Audit renders with **no console error** (a private-APIs failure shows as a blank mount)
+- [ ] Before scanning: toolbar says "Index has not been built yet", cells say "Scan required"
+- [ ] Scan Now advances through all three phases and reaches `complete`
+- [ ] `smr_audit_index_built` is `true` after completion
+- [ ] Clear Index empties both tables, progress returns to `idle`
+
+### 11.3 Reference detection
+
+Seed a post containing each of the following, then scan and confirm each surfaces with the correct Location:
+
+- [ ] `core/image` block without alt → Block, flagged missing alt
+- [ ] `core/gallery` block → Block, all images counted
+- [ ] Featured image → Featured Image
+- [ ] Classic `<img class="wp-image-N">` → Content
+- [ ] `<a href>` to an uploads-directory PDF → Content
+- [ ] `_elementor_data` meta blob → Post Meta
+
+### 11.4 List behaviour
+
+- [ ] All four filters (Location, Type, Used In, Without Alt)
+- [ ] All four sorts, both directions
+- [ ] Search by filename substring
+- [ ] Pagination past page 1
+- [ ] "Used In" popover lists sources with working edit links
+- [ ] An attachment with >50 references shows the truncation notice
+
+### 11.5 Delete guards
+
+- [ ] Bulk-select a **used** file → Delete is not offered
+- [ ] Row action on a **used** file → Delete Permanently is **not rendered**
+- [ ] Row action on an **unused** file → confirm → file deleted, row disappears
+
+### 11.6 Incremental sync
+
+- [ ] Remove an image from a post → its usage count drops without a rescan
+- [ ] Trash the post → usage count drops
+- [ ] Delete an attachment → its row disappears from the audit list
+- [ ] Upload a new attachment → appears with usage count 0
+
+### 11.7 Settings gate
+
+- [ ] Untick Enable Media Audit → menu disappears, REST route returns 404, saving a post no longer writes index rows
+- [ ] Re-tick → screen returns, existing index data intact
+
+---
+
+## Phase 12: Multisite Audit Provisioning
+
+- [ ] Network-activate → every existing subsite has both audit tables (`SHOW TABLES LIKE '%smr_audit%'` → 2 per site)
+- [ ] Create a new subsite → both tables appear immediately
+- [ ] Scan subsite A → subsite B's index is untouched
+- [ ] `smr_audit_progress`, the four transients and the cron entry exist only in A's options table
+- [ ] Media → Media Audit appears on each subsite; Replacement Settings does not (network-only)
+- [ ] `smr_enable_audit` set from Network Admin propagates to all sites
+- [ ] **Delete a subsite → both `wp_N_smr_audit_*` tables are gone** (this fails without the `wpmu_drop_tables` filter)
+- [ ] `wp smr audit scan --site-id=<id>` builds that site's index
+- [ ] `wp smr audit status --network` reports every site
 
 ---
 

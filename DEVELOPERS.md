@@ -11,6 +11,10 @@ This document covers all available hooks (actions and filters) exposed by Smart 
   - [wp smr db repair](#wp-smr-db-repair)
   - [wp smr db status](#wp-smr-db-status)
   - [wp smr db cleanup](#wp-smr-db-cleanup)
+  - [wp smr audit scan](#wp-smr-audit-scan)
+  - [wp smr audit status](#wp-smr-audit-status)
+  - [wp smr audit clear](#wp-smr-audit-clear)
+- [REST API](#rest-api)
 - [Filter Hooks](#filter-hooks)
   - [smr_create_revision](#smr_create_revision)
   - [smr_max_revisions](#smr_max_revisions)
@@ -19,12 +23,84 @@ This document covers all available hooks (actions and filters) exposed by Smart 
   - [smr_cleanup_chunk_size](#smr_cleanup_chunk_size)
   - [smr_revision_directory](#smr_revision_directory)
   - [smart_media_replacement_enforce_dimensions](#smart_media_replacement_enforce_dimensions)
+  - [smr_audit_scanned_meta_keys](#smr_audit_scanned_meta_keys)
+  - [smr_audit_scan_post_types](#smr_audit_scan_post_types)
+  - [smr_audit_scan_statuses](#smr_audit_scan_statuses)
+  - [smr_audit_batch_size](#smr_audit_batch_size)
 - [Action Hooks](#action-hooks)
   - [smart_media_replacement_before_replace](#smart_media_replacement_before_replace)
   - [smart_media_replacement_file_replaced](#smart_media_replacement_file_replaced)
   - [smr_revision_created](#smr_revision_created)
   - [smr_revision_restored](#smr_revision_restored)
   - [smr_revisions_cleaned](#smr_revisions_cleaned)
+
+---
+
+## REST API
+
+### `GET /smart-media-replacement/v1/audit-media`
+
+Paginated, filterable list of audited attachments. Backs the Media Audit screen.
+
+**Capability:** `manage_options`
+
+| Parameter | Type | Default | Notes |
+|-----------|------|---------|-------|
+| `page` | integer | `1` | 1-based page number |
+| `per_page` | integer | `20` | Maximum 100 |
+| `search` | string | `''` | Filename substring |
+| `orderby` | string | `date` | `title`, `date`, `usage`, `file_size` |
+| `order` | string | `DESC` | `ASC` or `DESC` |
+| `media_type` | string | `''` | `Image`, `Video`, `Audio`, `Document` |
+| `reference_type` | string | `''` | `block`, `featured_image`, `classic`, `postmeta` |
+| `usage_filter` | string | `''` | `used` or `unused` |
+| `missing_alt` | boolean | `false` | Restrict to references embedded without alt text |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "id": 123,
+      "title": "annual-report",
+      "mime_type": "application/pdf",
+      "media_type": "Document",
+      "thumbnail_url": "",
+      "file_url": "https://example.com/wp-content/uploads/2026/01/annual-report.pdf",
+      "edit_url": "https://example.com/wp-admin/post.php?post=123&action=edit",
+      "file_size": 482913,
+      "alt_text": "",
+      "content_alt_missing": false,
+      "date": "2026-01-14 09:22:41",
+      "usage_count": 3
+    }
+  ],
+  "total": 412,
+  "pages": 21
+}
+```
+
+The endpoint reads the denormalized summary table — a flat indexed scan with no `GROUP BY` and no postmeta join — and primes the post and meta caches for the whole page in two batched queries before mapping rows, avoiding the N+1 a raw `$wpdb` result set would otherwise incur.
+
+Deletions are not handled here. The client uses core's `DELETE /wp/v2/media/<id>?force=true`.
+
+---
+
+## Database Tables
+
+The plugin owns two independent storage areas, and they scope differently on multisite. This is deliberate:
+
+| | Revisions | Media audit |
+|---|---|---|
+| Table(s) | `{base_prefix}smr_revisions` | `{prefix}smr_audit_index`, `{prefix}smr_audit_summary` |
+| Multisite scope | One shared network table with a `blog_id` column | One pair of tables per site |
+| Provisioned by | Network activation | Network activation, `wp_initialize_site`, and a lazy guard on first use |
+| Removed by | Deactivation opt-in, uninstall | `wpmu_drop_tables` on site deletion, deactivation opt-in, uninstall |
+
+Revisions are *authored content*: permanent, small, and the network settings page reports network-wide totals, so a single shared table with a `blog_id` filter is the right shape. The audit index is a *derived cache* of one site's `wp_posts` — rebuilt on demand, proportional to that site's content, and it must vanish when the site is deleted. A shared audit table would put an entire network's reference graph in one place for no benefit, and would add a `blog_id` predicate to every query in `IndexTable`.
+
+Note that core's `wp_uninitialize_site()` only drops its own fixed table list, which is why the audit tables need the explicit `wpmu_drop_tables` filter.
 
 ---
 
@@ -419,6 +495,70 @@ add_filter( 'smart_media_replacement_enforce_dimensions', function( bool $enforc
     return $enforce;
 }, 10, 2 );
 ```
+
+---
+
+### `smr_audit_scanned_meta_keys`
+
+Post meta keys the audit scanner walks looking for page-builder media references. Each entry is `[ 'key' => string, 'format' => 'json'|'serialized' ]`.
+
+**Default:** Elementor (`_elementor_data`) and Beaver Builder (`_fl_builder_data`), both JSON.
+
+```php
+add_filter( 'smr_audit_scanned_meta_keys', function ( array $keys ): array {
+	$keys[] = array(
+		'key'    => '_my_builder_layout',
+		'format' => 'json',
+	);
+	return $keys;
+} );
+```
+
+The parser deliberately over-collects — it gathers every positive integer it finds — and `PostScanner` then validates the candidates against real attachments, so a loose match here cannot corrupt usage counts.
+
+---
+
+### `smr_audit_scan_post_types`
+
+Post types the scanner walks for media references.
+
+**Default:** `array( 'post', 'page', 'wp_template', 'wp_template_part' )`
+
+```php
+add_filter( 'smr_audit_scan_post_types', function ( array $types ): array {
+	$types[] = 'product';
+	return $types;
+} );
+```
+
+Adding a post type does not retroactively index it — run a fresh scan (or `wp smr audit scan`) afterwards.
+
+---
+
+### `smr_audit_scan_statuses`
+
+Post statuses treated as live content. The progress denominator and the scan loop both read this filter, so they stay consistent and progress can still reach 100%.
+
+**Default:** `array( 'publish', 'future', 'draft', 'pending', 'private' )`
+
+```php
+// Only count published content as "using" a file.
+add_filter( 'smr_audit_scan_statuses', fn() => array( 'publish' ) );
+```
+
+---
+
+### `smr_audit_batch_size`
+
+How many posts the scanner indexes per cron tick. Lower it on constrained hosting, raise it to finish large libraries faster.
+
+**Default:** `50`
+
+```php
+add_filter( 'smr_audit_batch_size', fn() => 25 );
+```
+
+Values below 1 are clamped to 1.
 
 ---
 
@@ -1003,6 +1143,66 @@ wp smr db cleanup --yes
 
 ---
 
+### `wp smr audit scan`
+
+Builds the media audit index. Runs every scan phase synchronously in the current process rather than scheduling cron ticks, and cancels the events the batch runner schedules as it goes, so no stray cron entry survives the command.
+
+**Why this matters on multisite:** WP-Cron only fires for a site that is receiving a request. A scan started from a quiet subsite's admin can sit at 0% indefinitely. This command is the reliable path.
+
+```
+[--site-id=<id>]   Scan a specific site (multisite only).
+[--network]        Scan every site on the network (multisite only).
+[--yes]            Skip the confirmation prompt when using --network.
+```
+
+```bash
+wp smr audit scan
+wp smr audit scan --site-id=3
+wp smr audit scan --network --yes
+```
+
+Each pass starts from a clean slate — the index is truncated and rebuilt, exactly as the "Scan Now" button does.
+
+---
+
+### `wp smr audit status`
+
+Reports index state without changing anything.
+
+```
+[--site-id=<id>]     Report on a specific site (multisite only).
+[--network]          Report on every site (multisite only).
+[--format=<format>]  table (default), json, csv, or yaml.
+```
+
+```bash
+wp smr audit status
+wp smr audit status --network --format=json
+```
+
+Columns: `tables` (`ok`/`missing`), `index_built`, `status` (`idle`/`scanning`/`complete`), `progress`, `indexed_files`, `unused_files`. With `--network`, a leading `site_id` column is added.
+
+`tables: missing` on a site means it was never provisioned — run `wp smr audit scan` on it, or trigger the `smr_db_health_check` cron, either of which recreates the tables.
+
+---
+
+### `wp smr audit clear`
+
+Empties the index and summary tables and resets scan state. The tables themselves are kept; run a scan to repopulate.
+
+```
+[--site-id=<id>]   Clear a specific site (multisite only).
+[--network]        Clear every site on the network (multisite only).
+[--yes]            Skip the confirmation prompt.
+```
+
+```bash
+wp smr audit clear
+wp smr audit clear --network --yes
+```
+
+---
+
 ## Quick Reference
 
 ### Filters
@@ -1016,6 +1216,10 @@ wp smr db cleanup --yes
 | `smr_cleanup_chunk_size` | `Functions/RevisionManager.php` | Expired revisions processed per DB batch (`int`) |
 | `smr_revision_directory` | `Functions/RevisionStorage.php` | Revision file storage path (`string`) |
 | `smart_media_replacement_enforce_dimensions` | `Functions/ManageMedia.php` | Strict dimension matching on replace (`bool`) |
+| `smr_audit_scanned_meta_keys` | `Functions/Audit/MetaParser.php` | Page-builder meta keys scanned (`array`) |
+| `smr_audit_scan_post_types` | `Functions/Audit/BatchRunner.php` | Post types the scanner walks (`string[]`) |
+| `smr_audit_scan_statuses` | `Functions/Audit/BatchRunner.php` | Post statuses treated as live (`string[]`) |
+| `smr_audit_batch_size` | `Functions/Audit/BatchRunner.php` | Posts indexed per cron tick (`int`) |
 
 ### Actions
 
@@ -1035,3 +1239,6 @@ wp smr db cleanup --yes
 | `wp smr db repair` | Recreate the revisions table if missing |
 | `wp smr db status` | Show revision counts and storage usage |
 | `wp smr db cleanup` | Delete expired revisions per retention policy |
+| `wp smr audit scan` | Build the media audit index (runs synchronously) |
+| `wp smr audit status` | Index state, file counts and unused count |
+| `wp smr audit clear` | Wipe the index and scan state (tables are kept) |

@@ -17,7 +17,23 @@ Prefix the change with one of these keywords:
 
 ## [Unreleased]
 
+### Breaking
+
+- **Requires WordPress 7.0 and PHP 8.0** (previously 6.6 / 7.4). The Media Audit interface is built on `@wordpress/dataviews`, which is bundled into the plugin and unlocks WordPress private APIs — it only works where core registers `@wordpress/dataviews` in its private-API allow-list, which is WordPress 7.0 and later.
+- **Uninstalling the plugin now deletes stored revision files.** Previously they survived deletion unless the "Delete files on deactivation" opt-in was set. Uninstall now means "remove everything the plugin owns": both database tables, all options, cached file-size meta, scheduled events, and revision files on disk.
+
 ### Added
+
+- **Media Audit** — absorbed from the standalone [Attached: Media Audit](https://github.com/troychaplin/attached-media-audit) plugin, which is now archived. Adds a Media → Media Audit screen that indexes which posts, pages and templates reference each attachment, so you can find unused files, see where a file is used before deleting it, and surface images embedded without alt text. Built on `@wordpress/dataviews` with filtering by usage location, media type, used/unused, and missing alt text.
+- **REST route** `GET /smart-media-replacement/v1/audit-media` — paginated, filterable attachment list backing the audit screen. Requires `manage_options`. Supports `page`, `per_page`, `search`, `orderby`, `order`, `media_type`, `reference_type`, `usage_filter` and `missing_alt`, and publishes a full item schema.
+- **WP-CLI commands** under `wp smr audit`: `scan`, `status` and `clear`, each supporting `--site-id=<id>` and `--network` on multisite. `scan` runs the batch loop synchronously rather than scheduling cron ticks — on a network this matters, because WP-Cron only fires for a site that is receiving traffic, so a quiet subsite's scan would otherwise never advance.
+- **`smr_enable_audit` setting** — turns the audit screen and per-save indexing off without removing existing index data.
+- **`smr_audit_scanned_meta_keys` filter** — post meta keys scanned for page-builder media references. Defaults to `_elementor_data` and `_fl_builder_data`.
+- **`smr_audit_scan_post_types` filter** — post types the scanner walks. Defaults to `post`, `page`, `wp_template`, `wp_template_part`.
+- **`smr_audit_scan_statuses` filter** — post statuses treated as live content.
+- **`smr_audit_batch_size` filter** — posts indexed per cron tick. Default 50.
+- **`uninstall.php`** — the plugin had none, so options survived deletion. Now removes all plugin data, multisite-aware, using `Settings::delete_all()` (which existed but was never called).
+- **Multisite provisioning for the audit tables.** Audit tables are per-site, so network activation provisions every existing site, `wp_initialize_site` provisions new ones, and a lazy guard creates them on first use for anything missed (including networks large enough that the activation loop is skipped). A `wpmu_drop_tables` filter removes them when a site is deleted — core only drops its own fixed table list, so without this every deleted subsite would leak two tables.
 
 - **WP-CLI commands** under `wp smr db`: `check` (verify the revisions table exists), `repair` (recreate it if missing), `status` (revision counts and storage usage, with `--network` for a per-site breakdown), and `cleanup` (delete expired revisions on demand). All commands support `--site-id=<id>` and `--network` on multisite; `cleanup` additionally accepts `--dry-run` and `--yes`.
 - **Database health-check cron** (`smr_db_health_check`). The table self-heal that previously ran on every admin page load is now a configurable scheduled event (hourly / daily / weekly / disabled), reducing unnecessary database queries on large networks. The frequency is controlled via a new "Database Health Check" setting. When set to disabled, use `wp smr db repair` for on-demand recovery.
@@ -26,8 +42,21 @@ Prefix the change with one of these keywords:
 
 ### Changed
 
+- **"Delete database on deactivation" now covers every table the plugin owns**, not just the revisions table. The setting label and description were reworded to match — previously it claimed to delete the database while leaving the audit tables behind.
+- **Build toolchain moved to `@wordpress/scripts` 32**, which brings ESLint 9 and flat config. `.eslintrc.json` and `.eslintignore` are replaced by `eslint.config.mjs`, and the required Node version moves to 22 (`.nvmrc` and CI). Note the config must be ESM: `@wordpress/eslint-plugin` 25 loads design tokens from an ESM-only module.
+- **`npm run lint` now runs stylelint** via a new `lint:css` script. Stylelint was configured but nothing invoked it.
+- **The audit REST endpoint no longer writes during a GET.** Recomputed file sizes are handed to a one-shot `smr_audit_backfill_filesizes` cron event instead of being persisted inline, keeping the read path read-only.
+
 - **Retention cleanup is now chunked and time-bounded.** `RevisionManager::cleanup_site()` processes expired revisions in configurable batches (default 100 rows) using cursor-based pagination, replacing the previous unbounded `SELECT *`. A single `DELETE … WHERE id IN (…)` per chunk replaces the prior per-row deletes. On multisite the cron stops iterating sites when the time budget is exhausted, with remaining sites handled on the next daily run.
 - **`RevisionManager::cleanup_site()` is now public and static**, allowing it to be called directly from WP-CLI without instantiating the class and without a time limit.
+
+### Fixed
+
+- **`SMART_MEDIA_REPLACEMENT_VERSION` no longer drifts from the plugin header.** The constant said `1.2.0` while the header, `package.json` and `readme.txt` all said `1.2.1`, so revision UI styles were cache-busted with a stale version.
+- **The Media Library script is no longer pinned to a hardcoded `1.0.0` version**, which meant browsers kept a cached copy across every plugin release. It now uses the generated build hash and its extracted dependency list, and receives script translations.
+- **`Settings::seed_defaults()` now uses a null sentinel** to distinguish "never set" from a stored falsy value, so a deliberately disabled boolean setting cannot be re-enabled by a later activation.
+- **Deactivation now clears all occurrences of each scheduled event.** The previous `wp_next_scheduled()` + `wp_unschedule_event()` pair only removed the next one, leaving duplicates behind.
+- **The single-row "Delete Permanently" action in the audit list is now restricted to unused files**, matching the eligibility rule already enforced on the bulk action. Previously a file referenced by many posts was one click and one confirm from permanent deletion.
 
 ## [1.2.0]
 

@@ -94,6 +94,55 @@ After a successful replacement:
 | "MIME type must match" | Wrong file type | Use the same file format |
 | "Dimensions must match" | Wrong image size | Resize to match original |
 
+## Auditing Your Media Library
+
+**Media → Media Audit** answers a question the Media Library cannot: which of these files is anything actually using?
+
+### Building the index
+
+The first time you open the screen, everything shows **Scan required** — the index has not been built. Click **Scan Now**. The scan runs in the background in bounded batches, so a large library will not time out, and progress is shown in place.
+
+Once it finishes, each file shows how many posts reference it. **Unused** (in red) means nothing the scanner looks at references that file.
+
+### Reading the list
+
+| Column | What it tells you |
+|--------|-------------------|
+| Preview | Thumbnail for images, a generic icon otherwise |
+| File Name | Hover for Edit, Delete, View and Download actions |
+| Type | Image, Video, Audio or Document |
+| Used In | Usage count — click it to see exactly which posts |
+| Size | File size on disk |
+| Alt Text | The attachment's alt text, or a "No alt" marker |
+| Date | Upload date |
+
+### Filtering
+
+Four filters narrow the list:
+
+- **Location** — how the file is referenced: Block, Featured Image, Content (classic markup), or Post Meta (page builders)
+- **Type** — Image, Video, Audio, Document
+- **Used In** — Used or Unused
+- **Without Alt** — images embedded in content without alt text
+
+Combine them: *Type: Image* + *Without Alt* gives you an accessibility worklist. *Used In: Unused* + sort by Size descending gives you the biggest cleanup wins first.
+
+### Deleting unused files
+
+Select unused files and use the bulk **Delete** action, or use the row action. Both are restricted to files with a usage count of zero — if a file is referenced anywhere, no delete control is offered for it.
+
+Before bulk deleting, be aware of what "Unused" cannot know about: URLs hardcoded in theme files, custom post types not included in the scan, and references from outside your site. Click through a usage count of zero on a few files you recognise before trusting it wholesale.
+
+### Keeping it current
+
+You do not need to rescan after routine edits. Saving, trashing or deleting a post updates its references immediately, and deleting an attachment removes it from the list. Rescan when you have imported content in bulk, or after adding post types or meta keys to the scan via filters.
+
+### On multisite
+
+Each site has its own index and its own audit screen — the index describes that site's content. If a scan seems stuck on a quiet subsite, WP-Cron is not firing there; ask an administrator to run `wp smr audit scan --site-id=<id>`.
+
+---
+
 ## Best Practices
 
 ### Before Replacing

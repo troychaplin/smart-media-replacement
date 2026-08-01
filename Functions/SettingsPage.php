@@ -119,6 +119,7 @@ class SettingsPage {
 			'smr_require_comment',
 			'smr_delete_files_on_deactivate',
 			'smr_delete_data_on_deactivate',
+			'smr_enable_audit',
 		);
 		foreach ( $bool_keys as $key ) {
 			Settings::update( $key, ! empty( $_POST[ $key ] ) );
@@ -217,6 +218,15 @@ class SettingsPage {
 				'sanitize_callback' => array( $this, 'sanitize_table_check_frequency' ),
 			)
 		);
+		register_setting(
+			'smr_settings',
+			'smr_enable_audit',
+			array(
+				'type'              => 'boolean',
+				'default'           => true,
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+			)
+		);
 
 		// Revision Settings Section.
 		add_settings_section(
@@ -304,6 +314,22 @@ class SettingsPage {
 			array( $this, 'render_table_check_frequency_field' ),
 			self::PAGE_SLUG,
 			'smr_cleanup_settings'
+		);
+
+		// Media Audit Section.
+		add_settings_section(
+			'smr_audit_settings',
+			__( 'Media Audit', 'smart-media-replacement' ),
+			array( $this, 'render_audit_section' ),
+			self::PAGE_SLUG
+		);
+
+		add_settings_field(
+			'smr_enable_audit',
+			__( 'Enable Media Audit', 'smart-media-replacement' ),
+			array( $this, 'render_enable_audit_field' ),
+			self::PAGE_SLUG,
+			'smr_audit_settings'
 		);
 
 		// Storage Info Section.
@@ -406,6 +432,32 @@ class SettingsPage {
 	public function render_cleanup_section(): void {
 		echo '<p>' . esc_html__( 'Control what happens when the plugin is deactivated.', 'smart-media-replacement' ) . '</p>';
 		echo '<p class="description" style="color: #d63638;">' . esc_html__( 'Warning: These settings will permanently delete data. Use with caution.', 'smart-media-replacement' ) . '</p>';
+	}
+
+	/**
+	 * Render media audit section description.
+	 */
+	public function render_audit_section(): void {
+		echo '<p>' . esc_html__( 'The Media Audit screen indexes which posts reference each media file, so you can find unused files and see where a file is used before deleting it.', 'smart-media-replacement' ) . '</p>';
+
+		if ( is_multisite() ) {
+			echo '<p class="description">' . esc_html__( 'The audit index is built per site. Each site has its own Media > Media Audit screen and runs its own scan.', 'smart-media-replacement' ) . '</p>';
+		}
+	}
+
+	/**
+	 * Render enable media audit field.
+	 */
+	public function render_enable_audit_field(): void {
+		$value = Settings::get( 'smr_enable_audit', true );
+		?>
+		<input type="hidden" name="smr_enable_audit" value="0">
+		<label>
+			<input type="checkbox" name="smr_enable_audit" value="1" <?php checked( $value ); ?>>
+			<?php esc_html_e( 'Enable the Media Audit screen and reference indexing', 'smart-media-replacement' ); ?>
+		</label>
+		<p class="description"><?php esc_html_e( 'When disabled, the Media Audit screen is hidden and posts are no longer indexed when saved. Existing index data is kept.', 'smart-media-replacement' ); ?></p>
+		<?php
 	}
 
 	/**
@@ -558,9 +610,9 @@ class SettingsPage {
 		<input type="hidden" name="smr_delete_data_on_deactivate" value="0">
 		<label>
 			<input type="checkbox" name="smr_delete_data_on_deactivate" value="1" <?php checked( $value ); ?>>
-			<?php esc_html_e( 'Delete database table when plugin is deactivated', 'smart-media-replacement' ); ?>
+			<?php esc_html_e( 'Delete all plugin database tables when plugin is deactivated', 'smart-media-replacement' ); ?>
 		</label>
-		<p class="description"><?php esc_html_e( 'This will permanently delete all revision history from the database.', 'smart-media-replacement' ); ?></p>
+		<p class="description"><?php esc_html_e( 'This will permanently delete all revision history and the media audit index from the database.', 'smart-media-replacement' ); ?></p>
 		<?php
 	}
 
