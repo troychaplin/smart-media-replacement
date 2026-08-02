@@ -209,7 +209,7 @@ add_action('admin_notices', function() {
 
 ### Media Audit menu is missing
 
-The audit subsystem is gated on a setting. Check **Media → Replacement Settings → Media Audit → Enable Media Audit** (or **Network Admin → Settings → Media Replacement** on multisite). When it is off, the screen is hidden, the REST route is not registered, and posts are not indexed on save. Existing index data is left untouched, so re-enabling it does not require a rescan.
+The audit subsystem is gated on a setting. Check **Settings → Smart Media Replacement → Media Audit → Enable Media Audit** (or **Network Admin → Settings → Smart Media Replacement** on multisite). When it is off, the screen is hidden, the REST route is not registered, and posts are not indexed on save. Existing index data is left untouched, so re-enabling it does not require a rescan.
 
 ### Media Audit table is empty, or every file says "Scan required"
 
@@ -236,11 +236,11 @@ wp smr audit scan --network        # every site
 
 ### A file is marked "Unused" but I know it is used
 
-The scanner looks at post content (blocks and classic markup), featured images, and page-builder post meta, across the post types in `smr_audit_scan_post_types`. It cannot see:
+The scanner looks at post content (blocks and classic markup), featured images, and page-builder post meta, across the post types in `smart_media_replacement_audit_scan_post_types`. It cannot see:
 
 - URLs hardcoded in theme template files
-- Custom post types not added via the `smr_audit_scan_post_types` filter
-- Page-builder meta keys not registered via `smr_audit_scanned_meta_keys`
+- Custom post types not added via the `smart_media_replacement_audit_scan_post_types` filter
+- Page-builder meta keys not registered via `smart_media_replacement_audit_scanned_meta_keys`
 - References from outside your site
 
 Add the relevant post types or meta keys via those filters, then rescan.

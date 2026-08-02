@@ -60,7 +60,7 @@ SHOW TABLES LIKE '%smr_revisions%';
 ### Test 1.3: Default Settings
 
 **Steps:**
-1. Go to Media → Replacement Settings
+1. Go to Settings → Smart Media Replacement
 2. Verify default values
 
 **Expected Defaults:**
@@ -78,7 +78,7 @@ SHOW TABLES LIKE '%smr_revisions%';
 ### Test 2.1: Settings Display
 
 **Steps:**
-1. Navigate to Media → Replacement Settings
+1. Navigate to Settings → Smart Media Replacement
 2. Verify all sections are visible
 
 **Expected Results:**
@@ -534,7 +534,7 @@ Seed a post containing each of the following, then scan and confirm each surface
 - [ ] Create a new subsite → both tables appear immediately
 - [ ] Scan subsite A → subsite B's index is untouched
 - [ ] `smr_audit_progress`, the four transients and the cron entry exist only in A's options table
-- [ ] Media → Media Audit appears on each subsite; Replacement Settings does not (network-only)
+- [ ] Media → Media Audit appears on each subsite; Settings → Smart Media Replacement does not (network-only)
 - [ ] `smr_enable_audit` set from Network Admin propagates to all sites
 - [ ] **Delete a subsite → both `wp_N_smr_audit_*` tables are gone** (this fails without the `wpmu_drop_tables` filter)
 - [ ] `wp smr audit scan --site-id=<id>` builds that site's index

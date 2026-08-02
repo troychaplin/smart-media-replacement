@@ -58,13 +58,16 @@ class SettingsPage {
 	}
 
 	/**
-	 * Add settings page to the site Media menu (single-site only).
+	 * Add settings page to the site Settings menu (single-site only).
+	 *
+	 * The menu label omits "Settings" because it already sits under the
+	 * Settings menu; the page title carries the full name, and that is what
+	 * get_admin_page_title() renders as the heading.
 	 */
 	public function add_settings_page(): void {
-		add_submenu_page(
-			'upload.php',
-			__( 'Media Replacement Settings', 'smart-media-replacement' ),
-			__( 'Replacement Settings', 'smart-media-replacement' ),
+		add_options_page(
+			__( 'Smart Media Replacement Settings', 'smart-media-replacement' ),
+			__( 'Smart Media Replacement', 'smart-media-replacement' ),
 			'manage_options',
 			self::PAGE_SLUG,
 			array( $this, 'render_settings_page' )
@@ -82,8 +85,8 @@ class SettingsPage {
 	public function add_network_settings_page(): void {
 		$hook = add_submenu_page(
 			'settings.php',
-			__( 'Media Replacement Settings', 'smart-media-replacement' ),
-			__( 'Media Replacement', 'smart-media-replacement' ),
+			__( 'Smart Media Replacement Settings', 'smart-media-replacement' ),
+			__( 'Smart Media Replacement', 'smart-media-replacement' ),
 			'manage_network_options',
 			self::PAGE_SLUG,
 			array( $this, 'render_settings_page' )
@@ -155,7 +158,7 @@ class SettingsPage {
 			: 'daily';
 		$table_check_freq  = in_array( $table_check_freq, $valid_frequencies, true ) ? $table_check_freq : 'daily';
 		Settings::update( 'smr_table_check_frequency', $table_check_freq );
-		smr_reschedule_health_check( $table_check_freq );
+		smart_media_replacement_reschedule_health_check( $table_check_freq );
 
 		wp_safe_redirect(
 			add_query_arg(
@@ -650,7 +653,7 @@ class SettingsPage {
 	 * @param string $new_value New option value.
 	 */
 	public function handle_frequency_change( $old_value, string $new_value ): void {
-		smr_reschedule_health_check( $new_value );
+		smart_media_replacement_reschedule_health_check( $new_value );
 	}
 
 	/**
@@ -668,7 +671,7 @@ class SettingsPage {
 		$table_name = RevisionDatabase::get_table_name();
 		$blog_id    = get_current_blog_id();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 		return (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM {$table_name} WHERE blog_id = %d",
@@ -691,7 +694,7 @@ class SettingsPage {
 
 		$table_name = RevisionDatabase::get_table_name();
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_name}" );
 	}
 }

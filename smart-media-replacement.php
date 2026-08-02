@@ -35,7 +35,7 @@ require_once SMART_MEDIA_REPLACEMENT_PLUGIN_PATH . 'vendor/autoload.php';
  *
  * @param string $frequency One of 'hourly', 'daily', 'weekly', or 'disabled'.
  */
-function smr_reschedule_health_check( string $frequency ): void {
+function smart_media_replacement_reschedule_health_check( string $frequency ): void {
 	$timestamp = wp_next_scheduled( 'smr_db_health_check' );
 	if ( $timestamp ) {
 		wp_unschedule_event( $timestamp, 'smr_db_health_check' );
@@ -91,7 +91,7 @@ function smart_media_replacement_activate( $network_wide ) { // phpcs:ignore Gen
 
 	// Schedule DB health-check cron at the configured frequency.
 	$frequency = \Smart_Media_Replacement\Settings::get( 'smr_table_check_frequency', 'daily' );
-	smr_reschedule_health_check( $frequency );
+	smart_media_replacement_reschedule_health_check( $frequency );
 
 	// Deliberately no automatic first scan. Kicking off an unbounded index
 	// build on every site of a network at activation is hostile, and the audit
@@ -251,7 +251,7 @@ add_filter( 'wpmu_drop_tables', 'smart_media_replacement_drop_tables' );
 function smart_media_replacement_action_links( array $links ): array {
 	$url = is_network_admin()
 		? network_admin_url( 'settings.php?page=' . \Smart_Media_Replacement\SettingsPage::PAGE_SLUG )
-		: admin_url( 'upload.php?page=' . \Smart_Media_Replacement\SettingsPage::PAGE_SLUG );
+		: admin_url( 'options-general.php?page=' . \Smart_Media_Replacement\SettingsPage::PAGE_SLUG );
 
 	$settings_link = sprintf(
 		'<a href="%s">%s</a>',

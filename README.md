@@ -12,7 +12,7 @@ A WordPress plugin that allows you to replace media files while maintaining thei
 - **Block editor integration** — "Update existing file" appears in every block's Replace toolbar dropdown (image, cover, audio, video, file, gallery, etc.); the editor refreshes in place without a page reload
 - **Configurable revision policy** — per-file-type opt-in (documents, images, or all), maximum revisions per file, age-based retention with daily cron cleanup, default major/minor behavior, and an optional require-note toggle
 - **Download revisions** — grab any individual revision, or download a ZIP archive of an attachment's full history
-- **Multisite-ready** — network-activate only, with one set of settings at Network Admin → Settings → Media Replacement applied to every site; revision files are stored under each site's uploads directory while metadata lives in a single shared network table; daily retention cleanup runs across the network; automatic row and file cleanup when a site is deleted. Single-site installs work exactly as before.
+- **Multisite-ready** — network-activate only, with one set of settings at Network Admin → Settings → Smart Media Replacement applied to every site; revision files are stored under each site's uploads directory while metadata lives in a single shared network table; daily retention cleanup runs across the network; automatic row and file cleanup when a site is deleted. Single-site installs work exactly as before.
 - **Media Audit** — a Media → Media Audit screen indexing which posts, pages and templates reference each attachment. Find unused files, see exactly where a file is used before deleting it, and surface images embedded without alt text. Filter by usage location, media type, used/unused and missing alt; bulk delete restricted to unused files. The index updates incrementally as content changes, so a full rescan is only needed to build it initially.
 - **WP-CLI commands** — `wp smr db check`, `repair`, `status`, and `cleanup` for on-demand health checks, diagnostics, and retention cleanup without relying on WP-Cron; `wp smr audit scan`, `status` and `clear` for the media audit index
 - **Validates file names** to prevent accidental URL changes
@@ -117,12 +117,12 @@ wp smr audit clear --yes     # Wipe the index (tables are kept)
 
 | Hook | Controls |
 |------|----------|
-| `smr_create_revision` | Whether to create a revision for a given attachment |
-| `smr_max_revisions` | Maximum revisions to keep per attachment |
-| `smr_retention_days` | Retention period in days (0 = disabled) |
-| `smr_cleanup_time_limit` | Seconds the daily cron cleanup may run before stopping gracefully |
-| `smr_cleanup_chunk_size` | Rows processed per database round-trip during cleanup |
-| `smr_revision_directory` | Base filesystem path for revision file storage |
+| `smart_media_replacement_create_revision` | Whether to create a revision for a given attachment |
+| `smart_media_replacement_max_revisions` | Maximum revisions to keep per attachment |
+| `smart_media_replacement_retention_days` | Retention period in days (0 = disabled) |
+| `smart_media_replacement_cleanup_time_limit` | Seconds the daily cron cleanup may run before stopping gracefully |
+| `smart_media_replacement_cleanup_chunk_size` | Rows processed per database round-trip during cleanup |
+| `smart_media_replacement_revision_directory` | Base filesystem path for revision file storage |
 | `smart_media_replacement_enforce_dimensions` | Whether image dimensions must match on replace |
 
 #### Actions
@@ -131,9 +131,9 @@ wp smr audit clear --yes     # Wipe the index (tables are kept)
 |------|-----------|
 | `smart_media_replacement_before_replace` | Validation passed, file not yet swapped |
 | `smart_media_replacement_file_replaced` | File swapped and metadata updated |
-| `smr_revision_created` | A revision is saved to disk and database |
-| `smr_revision_restored` | A revision is restored as the live file |
-| `smr_revisions_cleaned` | Old revisions are deleted (limit enforced or retention expired) |
+| `smart_media_replacement_revision_created` | A revision is saved to disk and database |
+| `smart_media_replacement_revision_restored` | A revision is restored as the live file |
+| `smart_media_replacement_revisions_cleaned` | Old revisions are deleted (limit enforced or retention expired) |
 
 ### Building from Source
 

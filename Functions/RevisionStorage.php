@@ -42,7 +42,7 @@ class RevisionStorage {
 		 *
 		 * @param string $base_path The base path for revision storage.
 		 */
-		return apply_filters( 'smr_revision_directory', $base_path );
+		return apply_filters( 'smart_media_replacement_revision_directory', $base_path );
 	}
 
 	/**

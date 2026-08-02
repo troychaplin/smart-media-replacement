@@ -62,18 +62,18 @@ function smart_media_replacement_uninstall_site(): void {
 }
 
 if ( is_multisite() ) {
-	$smr_sites = get_sites(
+	$smart_media_replacement_sites = get_sites(
 		array(
 			'fields' => 'ids',
 			'number' => 0,
 		)
 	);
-	foreach ( $smr_sites as $smr_site_id ) {
-		switch_to_blog( (int) $smr_site_id );
+	foreach ( $smart_media_replacement_sites as $smart_media_replacement_site_id ) {
+		switch_to_blog( (int) $smart_media_replacement_site_id );
 		smart_media_replacement_uninstall_site();
 		restore_current_blog();
 	}
-	unset( $smr_sites, $smr_site_id );
+	unset( $smart_media_replacement_sites, $smart_media_replacement_site_id );
 } else {
 	smart_media_replacement_uninstall_site();
 }

@@ -42,7 +42,7 @@ class MetaParser {
 				'format' => 'json',
 			),
 		);
-		return apply_filters( 'smr_audit_scanned_meta_keys', $defaults );
+		return apply_filters( 'smart_media_replacement_audit_scanned_meta_keys', $defaults );
 	}
 
 	/**

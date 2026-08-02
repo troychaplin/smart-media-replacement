@@ -64,7 +64,7 @@ This covers the `before_replace` timing fix. Each failed validation must NOT lea
 
 - [ ] Replace `foo.jpg` with `bar.jpg` (wrong name, same MIME, same dimensions)
 - [ ] Error shown — "must have the same name as the original file"
-- [ ] In Settings → Media → Replacement Settings → Storage, **Total Revisions** count is unchanged from before the attempt
+- [ ] In Settings → Smart Media Replacement → Storage, **Total Revisions** count is unchanged from before the attempt
 - [ ] In the DB: `SELECT COUNT(*) FROM wp_smr_revisions WHERE attachment_id = <id>` is unchanged
 
 ### 2.2 Wrong MIME
@@ -284,7 +284,8 @@ Skip this section if you're not running multisite.
 
 - [ ] Network-activate the plugin
 - [ ] Create a new site via Network Admin → Sites → Add New
-- [ ] Visit that site's Media → Replacement Settings — defaults populated correctly
+- [ ] That site has both audit tables (`SHOW TABLES LIKE '%smr_audit%'` → 2 rows)
+- [ ] That site has no per-site settings page — settings are network-only
 
 ### 9.3 Site deletion cleanup
 

@@ -70,7 +70,7 @@ class BatchRunner {
 		 *
 		 * @param string[] $post_types Post type slugs.
 		 */
-		$types = apply_filters( 'smr_audit_scan_post_types', self::SCAN_POST_TYPES );
+		$types = apply_filters( 'smart_media_replacement_audit_scan_post_types', self::SCAN_POST_TYPES );
 
 		return array_values( array_filter( array_map( 'strval', (array) $types ) ) );
 	}
@@ -89,7 +89,7 @@ class BatchRunner {
 		 *
 		 * @param string[] $statuses Post status slugs.
 		 */
-		$statuses = apply_filters( 'smr_audit_scan_statuses', self::SCAN_STATUSES );
+		$statuses = apply_filters( 'smart_media_replacement_audit_scan_statuses', self::SCAN_STATUSES );
 
 		return array_values( array_filter( array_map( 'strval', (array) $statuses ) ) );
 	}
@@ -105,7 +105,7 @@ class BatchRunner {
 		 *
 		 * @param int $batch_size Posts per tick.
 		 */
-		$size = (int) apply_filters( 'smr_audit_batch_size', self::BATCH_SIZE );
+		$size = (int) apply_filters( 'smart_media_replacement_audit_batch_size', self::BATCH_SIZE );
 
 		return max( 1, $size );
 	}

@@ -21,6 +21,19 @@ Prefix the change with one of these keywords:
 
 - **Requires WordPress 7.0 and PHP 8.0** (previously 6.6 / 7.4). The Media Audit interface is built on `@wordpress/dataviews`, which is bundled into the plugin and unlocks WordPress private APIs — it only works where core registers `@wordpress/dataviews` in its private-API allow-list, which is WordPress 7.0 and later.
 - **Uninstalling the plugin now deletes stored revision files.** Previously they survived deletion unless the "Delete files on deactivation" opt-in was set. Uninstall now means "remove everything the plugin owns": both database tables, all options, cached file-size meta, scheduled events, and revision files on disk.
+- **Every plugin hook now uses the full `smart_media_replacement_` prefix**, for compliance with the WordPress.org Plugin Check tool (which auto-derives the expected prefix from the plugin's Text Domain and does not recognize the abbreviated `smr_` this plugin previously used for hooks, even though it's a deliberate, internally-consistent convention). **Options, transients, table names, cron hook names, nonces, and AJAX action names are unaffected** — only `add_filter`/`do_action` hook names changed. If you've hooked into any of these, update the hook name:
+
+  | Old | New |
+  |---|---|
+  | `smr_create_revision` | `smart_media_replacement_create_revision` |
+  | `smr_revision_created` | `smart_media_replacement_revision_created` |
+  | `smr_max_revisions` | `smart_media_replacement_max_revisions` |
+  | `smr_retention_days` | `smart_media_replacement_retention_days` |
+  | `smr_revisions_cleaned` | `smart_media_replacement_revisions_cleaned` |
+  | `smr_revision_restored` | `smart_media_replacement_revision_restored` |
+  | `smr_revision_directory` | `smart_media_replacement_revision_directory` |
+
+  (`smr_cleanup_time_limit`, `smr_cleanup_chunk_size` and the four `smr_audit_*` filters were unreleased in prior versions, so they're listed under Added below with their final names rather than here.)
 
 ### Added
 
@@ -28,20 +41,21 @@ Prefix the change with one of these keywords:
 - **REST route** `GET /smart-media-replacement/v1/audit-media` — paginated, filterable attachment list backing the audit screen. Requires `manage_options`. Supports `page`, `per_page`, `search`, `orderby`, `order`, `media_type`, `reference_type`, `usage_filter` and `missing_alt`, and publishes a full item schema.
 - **WP-CLI commands** under `wp smr audit`: `scan`, `status` and `clear`, each supporting `--site-id=<id>` and `--network` on multisite. `scan` runs the batch loop synchronously rather than scheduling cron ticks — on a network this matters, because WP-Cron only fires for a site that is receiving traffic, so a quiet subsite's scan would otherwise never advance.
 - **`smr_enable_audit` setting** — turns the audit screen and per-save indexing off without removing existing index data.
-- **`smr_audit_scanned_meta_keys` filter** — post meta keys scanned for page-builder media references. Defaults to `_elementor_data` and `_fl_builder_data`.
-- **`smr_audit_scan_post_types` filter** — post types the scanner walks. Defaults to `post`, `page`, `wp_template`, `wp_template_part`.
-- **`smr_audit_scan_statuses` filter** — post statuses treated as live content.
-- **`smr_audit_batch_size` filter** — posts indexed per cron tick. Default 50.
+- **`smart_media_replacement_audit_scanned_meta_keys` filter** — post meta keys scanned for page-builder media references. Defaults to `_elementor_data` and `_fl_builder_data`.
+- **`smart_media_replacement_audit_scan_post_types` filter** — post types the scanner walks. Defaults to `post`, `page`, `wp_template`, `wp_template_part`.
+- **`smart_media_replacement_audit_scan_statuses` filter** — post statuses treated as live content.
+- **`smart_media_replacement_audit_batch_size` filter** — posts indexed per cron tick. Default 50.
 - **`uninstall.php`** — the plugin had none, so options survived deletion. Now removes all plugin data, multisite-aware, using `Settings::delete_all()` (which existed but was never called).
 - **Multisite provisioning for the audit tables.** Audit tables are per-site, so network activation provisions every existing site, `wp_initialize_site` provisions new ones, and a lazy guard creates them on first use for anything missed (including networks large enough that the activation loop is skipped). A `wpmu_drop_tables` filter removes them when a site is deleted — core only drops its own fixed table list, so without this every deleted subsite would leak two tables.
 
 - **WP-CLI commands** under `wp smr db`: `check` (verify the revisions table exists), `repair` (recreate it if missing), `status` (revision counts and storage usage, with `--network` for a per-site breakdown), and `cleanup` (delete expired revisions on demand). All commands support `--site-id=<id>` and `--network` on multisite; `cleanup` additionally accepts `--dry-run` and `--yes`.
 - **Database health-check cron** (`smr_db_health_check`). The table self-heal that previously ran on every admin page load is now a configurable scheduled event (hourly / daily / weekly / disabled), reducing unnecessary database queries on large networks. The frequency is controlled via a new "Database Health Check" setting. When set to disabled, use `wp smr db repair` for on-demand recovery.
-- **`smr_cleanup_time_limit` filter** — lets operators set the maximum number of seconds the daily retention cron may run before stopping gracefully. Defaults to `max_execution_time − 10 s` (floor 5 s), or 60 s when `max_execution_time` is unlimited.
-- **`smr_cleanup_chunk_size` filter** — controls how many expired revisions are processed per database round-trip during cleanup. Default 100.
+- **`smart_media_replacement_cleanup_time_limit` filter** — lets operators set the maximum number of seconds the daily retention cron may run before stopping gracefully. Defaults to `max_execution_time − 10 s` (floor 5 s), or 60 s when `max_execution_time` is unlimited.
+- **`smart_media_replacement_cleanup_chunk_size` filter** — controls how many expired revisions are processed per database round-trip during cleanup. Default 100.
 
 ### Changed
 
+- **The settings page moved from Media to Settings.** On single-site it is now **Settings → Smart Media Replacement** (previously Media → Replacement Settings), registered via `add_options_page()`. The page slug (`smr-settings`) is unchanged, so any bookmarked `?page=smr-settings` URL still resolves — only the parent file differs. On multisite it stays at Network Admin → Settings, renamed to match. The "Settings" shortcut on the Plugins screen was updated to point at the new location.
 - **"Delete database on deactivation" now covers every table the plugin owns**, not just the revisions table. The setting label and description were reworded to match — previously it claimed to delete the database while leaving the audit tables behind.
 - **Build toolchain moved to `@wordpress/scripts` 32**, which brings ESLint 9 and flat config. `.eslintrc.json` and `.eslintignore` are replaced by `eslint.config.mjs`, and the required Node version moves to 22 (`.nvmrc` and CI). Note the config must be ESM: `@wordpress/eslint-plugin` 25 loads design tokens from an ESM-only module.
 - **`npm run lint` now runs stylelint** via a new `lint:css` script. Stylelint was configured but nothing invoked it.

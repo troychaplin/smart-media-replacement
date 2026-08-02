@@ -413,7 +413,16 @@ class ManageMedia {
 			// the user keeps their new file rather than losing both old and new.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
+			global $wp_filesystem;
+			if ( ! WP_Filesystem() ) {
+				wp_send_json_error( __( 'Could not access the filesystem to complete the replacement.', 'smart-media-replacement' ) );
+			}
+
+			// $overwrite = true: $target_path is the file being replaced, so it
+			// already exists on disk — WP_Filesystem::move() refuses to overwrite
+			// by default. The upload's authenticity was already confirmed via
+			// is_uploaded_file() above, so this doesn't weaken that check.
+			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'smart-media-replacement' ) );
 			}
 

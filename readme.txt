@@ -8,7 +8,7 @@ Requires PHP:      8.0
 License:           GPL-2.0-or-later
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
-Replace media files in place — same URL, new content, no broken links. Includes revision history with one-click rollback, and a media audit that shows which files are actually used.
+Replace media files in place with revision history. Audit your library to find unused files and missing alt text.
 
 == Description ==
 
@@ -68,14 +68,14 @@ Ever updated a PDF and realized half your site links to the old version? Or repl
 
 **Built-in admin**
 
-* Settings page at Media → Replacement Settings
+* Settings page at Settings → Smart Media Replacement
 * Storage stats: total revisions, total disk usage, database table status
 * Optional deactivation cleanup (files and/or database)
 
 **Multisite-ready**
 
 * Network-activate only on multisite — one consistent configuration across every site
-* Settings live at Network Admin → Settings → Media Replacement and apply network-wide
+* Settings live at Network Admin → Settings → Smart Media Replacement and apply network-wide
 * Revisions are stored per-site under each site's uploads directory; metadata lives in a single shared network table
 * Daily retention cleanup runs across every site in the network
 * Automatic row and file cleanup when a site is deleted
@@ -111,7 +111,7 @@ This plugin is fully self-contained and respects your privacy:
 
 1. Install from the WordPress plugin directory, or upload the `smart-media-replacement` folder to `/wp-content/plugins/`
 2. Activate through the Plugins menu in WordPress
-3. (Optional) Visit Media → Replacement Settings to configure revision history behavior
+3. (Optional) Visit Settings → Smart Media Replacement to configure revision history behavior
 4. (Optional) Visit Media → Media Audit and run a scan to build the media usage index
 
 = Uninstalling =
@@ -120,7 +120,7 @@ Deactivating the plugin leaves your data alone unless you opted in to the deleti
 
 = Multisite =
 
-On WordPress multisite the plugin is network-activate only — activate it once from Network Admin → Plugins, then configure it at Network Admin → Settings → Media Replacement. The settings you choose apply to every site on the network. There is no per-site settings page on multisite.
+On WordPress multisite the plugin is network-activate only — activate it once from Network Admin → Plugins, then configure it at Network Admin → Settings → Smart Media Replacement. The settings you choose apply to every site on the network. There is no per-site settings page on multisite.
 
 The Media Audit works differently from the settings, deliberately: the audit index is built **per site**, because it indexes that site's own content. Each site gets its own Media → Media Audit screen and runs its own scan. Audit tables are created for every existing site on network activation, and automatically for any site created afterwards.
 
@@ -199,7 +199,7 @@ If WordPress automatically created a `-scaled` variant (typical for uploads over
 
 = I have revisions enabled but I don't see any history. Why? =
 
-Revisions are created on **replacement**, not on the original upload — so a brand-new attachment shows no history until you've replaced it at least once. Also check Media → Replacement Settings: the "Enable Revisions For" option lets you scope revisions to documents only, images only, or all file types. If your attachment's type isn't covered, no revisions will be tracked.
+Revisions are created on **replacement**, not on the original upload — so a brand-new attachment shows no history until you've replaced it at least once. Also check Settings → Smart Media Replacement: the "Enable Revisions For" option lets you scope revisions to documents only, images only, or all file types. If your attachment's type isn't covered, no revisions will be tracked.
 
 = Is there a WP-CLI interface? =
 
@@ -207,7 +207,7 @@ Yes. The plugin ships with `wp smr db check`, `wp smr db repair`, `wp smr db sta
 
 = How does the Media Audit know where a file is used? =
 
-It scans posts, pages and templates for references in block markup (image, cover, gallery, file, video, audio, media & text), in classic content (img tags, gallery and caption shortcodes, and links into your uploads directory), in featured images, and in page-builder post meta (Elementor and Beaver Builder by default, extendable via the `smr_audit_scanned_meta_keys` filter). Every candidate is validated against your real attachments, so stale markup can't inflate usage counts.
+It scans posts, pages and templates for references in block markup (image, cover, gallery, file, video, audio, media & text), in classic content (img tags, gallery and caption shortcodes, and links into your uploads directory), in featured images, and in page-builder post meta (Elementor and Beaver Builder by default, extendable via the `smart_media_replacement_audit_scanned_meta_keys` filter). Every candidate is validated against your real attachments, so stale markup can't inflate usage counts.
 
 = Is it safe to delete everything marked "Unused"? =
 
@@ -252,6 +252,8 @@ Yes — you need the `edit_post` capability for the specific attachment. This ma
 **New WP-CLI commands.** `wp smr audit scan`, `wp smr audit status` and `wp smr audit clear`, all supporting `--site-id` and `--network` on multisite. On a network these are the reliable way to build indexes, since WP-Cron only fires for sites receiving traffic.
 
 **Breaking:** this release requires **WordPress 7.0** and **PHP 8.0**. The audit interface is built on the WordPress DataViews component, which is only available in WordPress 7.0 and later.
+
+**Settings moved.** The settings page is now at **Settings → Smart Media Replacement** instead of Media → Replacement Settings. Bookmarks to `?page=smr-settings` still work — only the parent menu changed.
 
 **Also changed:** "Delete database on deactivation" now covers the audit tables as well as the revisions table. Deleting the plugin now removes all plugin data including stored revision files — see the Uninstalling section above. Media Library scripts are now cache-busted per release rather than pinned to a fixed version.
 
