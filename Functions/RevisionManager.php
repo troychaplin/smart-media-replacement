@@ -70,7 +70,7 @@ class RevisionManager {
 		 * @param bool $create        Whether to create a revision.
 		 * @param int  $attachment_id The attachment ID.
 		 */
-		$should_create = apply_filters( 'smr_create_revision', true, $attachment_id );
+		$should_create = apply_filters( 'smart_media_replacement_create_revision', true, $attachment_id );
 
 		if ( ! $should_create ) {
 			return;
@@ -136,7 +136,7 @@ class RevisionManager {
 			 * @param array $revision_data The revision data.
 			 */
 			do_action(
-				'smr_revision_created',
+				'smart_media_replacement_revision_created',
 				$revision_id,
 				$attachment_id,
 				array(
@@ -216,7 +216,7 @@ class RevisionManager {
 		 * @param int $max_revisions  Maximum revisions to keep.
 		 * @param int $attachment_id  The attachment ID.
 		 */
-		$max_revisions = apply_filters( 'smr_max_revisions', (int) Settings::get( 'smr_max_revisions', 10 ), $attachment_id );
+		$max_revisions = apply_filters( 'smart_media_replacement_max_revisions', (int) Settings::get( 'smr_max_revisions', 10 ), $attachment_id );
 
 		$current_count = RevisionDatabase::get_count( $attachment_id );
 
@@ -254,7 +254,7 @@ class RevisionManager {
 			 * @param int   $attachment_id The attachment ID.
 			 * @param array $deleted_ids   Array of deleted revision IDs.
 			 */
-			do_action( 'smr_revisions_cleaned', $attachment_id, $deleted_ids );
+			do_action( 'smart_media_replacement_revisions_cleaned', $attachment_id, $deleted_ids );
 		}
 	}
 
@@ -286,7 +286,7 @@ class RevisionManager {
 		 *
 		 * @param int $days Retention days (0 = disabled).
 		 */
-		$retention_days = apply_filters( 'smr_retention_days', (int) Settings::get( 'smr_retention_days', 0 ), 0 );
+		$retention_days = apply_filters( 'smart_media_replacement_retention_days', (int) Settings::get( 'smr_retention_days', 0 ), 0 );
 
 		if ( $retention_days <= 0 ) {
 			return;
@@ -303,7 +303,7 @@ class RevisionManager {
 		 *
 		 * @param int $seconds Time budget in seconds.
 		 */
-		$budget   = (int) apply_filters( 'smr_cleanup_time_limit', $max_exec > 0 ? max( 5, $max_exec - 10 ) : 60 );
+		$budget   = (int) apply_filters( 'smart_media_replacement_cleanup_time_limit', $max_exec > 0 ? max( 5, $max_exec - 10 ) : 60 );
 		$deadline = microtime( true ) + $budget;
 
 		if ( is_multisite() ) {
@@ -346,7 +346,7 @@ class RevisionManager {
 		 *
 		 * @param int $chunk_size Rows per batch.
 		 */
-		$chunk_size  = max( 1, (int) apply_filters( 'smr_cleanup_chunk_size', 100 ) );
+		$chunk_size  = max( 1, (int) apply_filters( 'smart_media_replacement_cleanup_chunk_size', 100 ) );
 		$last_id     = 0;
 		$deleted     = 0;
 		$batch_count = 0;
@@ -379,7 +379,7 @@ class RevisionManager {
 			$deleted += count( $ids );
 
 			foreach ( $grouped as $attachment_id => $revision_ids ) {
-				do_action( 'smr_revisions_cleaned', $attachment_id, $revision_ids );
+				do_action( 'smart_media_replacement_revisions_cleaned', $attachment_id, $revision_ids );
 			}
 		} while ( $batch_count === $chunk_size );
 
@@ -470,7 +470,7 @@ class RevisionManager {
 		 * @param int $revision_id   The restored revision ID.
 		 * @param int $attachment_id The attachment ID.
 		 */
-		do_action( 'smr_revision_restored', $revision_id, $attachment_id );
+		do_action( 'smart_media_replacement_revision_restored', $revision_id, $attachment_id );
 
 		return true;
 	}

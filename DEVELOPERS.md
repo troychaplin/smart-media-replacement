@@ -11,20 +11,96 @@ This document covers all available hooks (actions and filters) exposed by Smart 
   - [wp smr db repair](#wp-smr-db-repair)
   - [wp smr db status](#wp-smr-db-status)
   - [wp smr db cleanup](#wp-smr-db-cleanup)
+  - [wp smr audit scan](#wp-smr-audit-scan)
+  - [wp smr audit status](#wp-smr-audit-status)
+  - [wp smr audit clear](#wp-smr-audit-clear)
+- [REST API](#rest-api)
 - [Filter Hooks](#filter-hooks)
-  - [smr_create_revision](#smr_create_revision)
-  - [smr_max_revisions](#smr_max_revisions)
-  - [smr_retention_days](#smr_retention_days)
-  - [smr_cleanup_time_limit](#smr_cleanup_time_limit)
-  - [smr_cleanup_chunk_size](#smr_cleanup_chunk_size)
-  - [smr_revision_directory](#smr_revision_directory)
+  - [smart_media_replacement_create_revision](#smart_media_replacement_create_revision)
+  - [smart_media_replacement_max_revisions](#smart_media_replacement_max_revisions)
+  - [smart_media_replacement_retention_days](#smart_media_replacement_retention_days)
+  - [smart_media_replacement_cleanup_time_limit](#smart_media_replacement_cleanup_time_limit)
+  - [smart_media_replacement_cleanup_chunk_size](#smart_media_replacement_cleanup_chunk_size)
+  - [smart_media_replacement_revision_directory](#smart_media_replacement_revision_directory)
   - [smart_media_replacement_enforce_dimensions](#smart_media_replacement_enforce_dimensions)
+  - [smart_media_replacement_audit_scanned_meta_keys](#smart_media_replacement_audit_scanned_meta_keys)
+  - [smart_media_replacement_audit_scan_post_types](#smart_media_replacement_audit_scan_post_types)
+  - [smart_media_replacement_audit_scan_statuses](#smart_media_replacement_audit_scan_statuses)
+  - [smart_media_replacement_audit_batch_size](#smart_media_replacement_audit_batch_size)
 - [Action Hooks](#action-hooks)
   - [smart_media_replacement_before_replace](#smart_media_replacement_before_replace)
   - [smart_media_replacement_file_replaced](#smart_media_replacement_file_replaced)
-  - [smr_revision_created](#smr_revision_created)
-  - [smr_revision_restored](#smr_revision_restored)
-  - [smr_revisions_cleaned](#smr_revisions_cleaned)
+  - [smart_media_replacement_revision_created](#smart_media_replacement_revision_created)
+  - [smart_media_replacement_revision_restored](#smart_media_replacement_revision_restored)
+  - [smart_media_replacement_revisions_cleaned](#smart_media_replacement_revisions_cleaned)
+
+---
+
+## REST API
+
+### `GET /smart-media-replacement/v1/audit-media`
+
+Paginated, filterable list of audited attachments. Backs the Media Audit screen.
+
+**Capability:** `manage_options`
+
+| Parameter | Type | Default | Notes |
+|-----------|------|---------|-------|
+| `page` | integer | `1` | 1-based page number |
+| `per_page` | integer | `20` | Maximum 100 |
+| `search` | string | `''` | Filename substring |
+| `orderby` | string | `date` | `title`, `date`, `usage`, `file_size` |
+| `order` | string | `DESC` | `ASC` or `DESC` |
+| `media_type` | string | `''` | `Image`, `Video`, `Audio`, `Document` |
+| `reference_type` | string | `''` | `block`, `featured_image`, `classic`, `postmeta` |
+| `usage_filter` | string | `''` | `used` or `unused` |
+| `missing_alt` | boolean | `false` | Restrict to references embedded without alt text |
+
+**Response:**
+
+```json
+{
+  "items": [
+    {
+      "id": 123,
+      "title": "annual-report",
+      "mime_type": "application/pdf",
+      "media_type": "Document",
+      "thumbnail_url": "",
+      "file_url": "https://example.com/wp-content/uploads/2026/01/annual-report.pdf",
+      "edit_url": "https://example.com/wp-admin/post.php?post=123&action=edit",
+      "file_size": 482913,
+      "alt_text": "",
+      "content_alt_missing": false,
+      "date": "2026-01-14 09:22:41",
+      "usage_count": 3
+    }
+  ],
+  "total": 412,
+  "pages": 21
+}
+```
+
+The endpoint reads the denormalized summary table — a flat indexed scan with no `GROUP BY` and no postmeta join — and primes the post and meta caches for the whole page in two batched queries before mapping rows, avoiding the N+1 a raw `$wpdb` result set would otherwise incur.
+
+Deletions are not handled here. The client uses core's `DELETE /wp/v2/media/<id>?force=true`.
+
+---
+
+## Database Tables
+
+The plugin owns two independent storage areas, and they scope differently on multisite. This is deliberate:
+
+| | Revisions | Media audit |
+|---|---|---|
+| Table(s) | `{base_prefix}smr_revisions` | `{prefix}smr_audit_index`, `{prefix}smr_audit_summary` |
+| Multisite scope | One shared network table with a `blog_id` column | One pair of tables per site |
+| Provisioned by | Network activation | Network activation, `wp_initialize_site`, and a lazy guard on first use |
+| Removed by | Deactivation opt-in, uninstall | `wpmu_drop_tables` on site deletion, deactivation opt-in, uninstall |
+
+Revisions are *authored content*: permanent, small, and the network settings page reports network-wide totals, so a single shared table with a `blog_id` filter is the right shape. The audit index is a *derived cache* of one site's `wp_posts` — rebuilt on demand, proportional to that site's content, and it must vanish when the site is deleted. A shared audit table would put an entire network's reference graph in one place for no benefit, and would add a `blog_id` predicate to every query in `IndexTable`.
+
+Note that core's `wp_uninitialize_site()` only drops its own fixed table list, which is why the audit tables need the explicit `wpmu_drop_tables` filter.
 
 ---
 
@@ -34,7 +110,7 @@ Filters let you intercept a value the plugin is about to use and return a modifi
 
 ---
 
-### `smr_create_revision`
+### `smart_media_replacement_create_revision`
 
 Controls whether a revision should be created for a given attachment. Return `false` to skip revision creation entirely for that attachment.
 
@@ -54,7 +130,7 @@ Controls whether a revision should be created for a given attachment. Return `fa
 **Example: Disable revisions for a specific attachment**
 
 ```php
-add_filter( 'smr_create_revision', function( bool $should_create, int $attachment_id ): bool {
+add_filter( 'smart_media_replacement_create_revision', function( bool $should_create, int $attachment_id ): bool {
     if ( 42 === $attachment_id ) {
         return false;
     }
@@ -67,7 +143,7 @@ add_filter( 'smr_create_revision', function( bool $should_create, int $attachmen
 **Example: Disable revisions for PDFs**
 
 ```php
-add_filter( 'smr_create_revision', function( bool $should_create, int $attachment_id ): bool {
+add_filter( 'smart_media_replacement_create_revision', function( bool $should_create, int $attachment_id ): bool {
     $mime = get_post_mime_type( $attachment_id );
     if ( 'application/pdf' === $mime ) {
         return false;
@@ -81,7 +157,7 @@ add_filter( 'smr_create_revision', function( bool $should_create, int $attachmen
 **Example: Disable revisions outside business hours (useful for scheduled imports)**
 
 ```php
-add_filter( 'smr_create_revision', function( bool $should_create, int $attachment_id ): bool {
+add_filter( 'smart_media_replacement_create_revision', function( bool $should_create, int $attachment_id ): bool {
     $hour = (int) current_time( 'G' );
     if ( $hour >= 2 && $hour < 4 ) {
         // Skip revisions during nightly automated import window.
@@ -96,7 +172,7 @@ add_filter( 'smr_create_revision', function( bool $should_create, int $attachmen
 **Example: Disable revisions for attachments in a specific media category (if using a taxonomy)**
 
 ```php
-add_filter( 'smr_create_revision', function( bool $should_create, int $attachment_id ): bool {
+add_filter( 'smart_media_replacement_create_revision', function( bool $should_create, int $attachment_id ): bool {
     if ( has_term( 'stock-assets', 'media_category', $attachment_id ) ) {
         return false;
     }
@@ -106,7 +182,7 @@ add_filter( 'smr_create_revision', function( bool $should_create, int $attachmen
 
 ---
 
-### `smr_max_revisions`
+### `smart_media_replacement_max_revisions`
 
 Filters the maximum number of revisions to retain per attachment. When the limit is exceeded, the oldest revisions are deleted automatically.
 
@@ -126,7 +202,7 @@ Filters the maximum number of revisions to retain per attachment. When the limit
 **Example: Increase the limit for video attachments**
 
 ```php
-add_filter( 'smr_max_revisions', function( int $max, int $attachment_id ): int {
+add_filter( 'smart_media_replacement_max_revisions', function( int $max, int $attachment_id ): int {
     if ( wp_attachment_is( 'video', $attachment_id ) ) {
         return 25;
     }
@@ -139,7 +215,7 @@ add_filter( 'smr_max_revisions', function( int $max, int $attachment_id ): int {
 **Example: Give featured images a higher revision limit**
 
 ```php
-add_filter( 'smr_max_revisions', function( int $max, int $attachment_id ): int {
+add_filter( 'smart_media_replacement_max_revisions', function( int $max, int $attachment_id ): int {
     global $wpdb;
     $is_featured = $wpdb->get_var(
         $wpdb->prepare(
@@ -159,14 +235,14 @@ add_filter( 'smr_max_revisions', function( int $max, int $attachment_id ): int {
 **Example: Cap revisions to 3 for all attachments regardless of settings**
 
 ```php
-add_filter( 'smr_max_revisions', function( int $max, int $attachment_id ): int {
+add_filter( 'smart_media_replacement_max_revisions', function( int $max, int $attachment_id ): int {
     return min( $max, 3 );
 }, 10, 2 );
 ```
 
 ---
 
-### `smr_retention_days`
+### `smart_media_replacement_retention_days`
 
 Filters the number of days to retain revisions before they are automatically deleted. Set to `0` to disable expiration. Revisions older than this threshold are removed during the cleanup routine.
 
@@ -188,7 +264,7 @@ Filters the number of days to retain revisions before they are automatically del
 **Example: Enforce a 90-day retention policy regardless of settings**
 
 ```php
-add_filter( 'smr_retention_days', function( int $days ): int {
+add_filter( 'smart_media_replacement_retention_days', function( int $days ): int {
     return 90;
 } );
 ```
@@ -198,7 +274,7 @@ add_filter( 'smr_retention_days', function( int $days ): int {
 **Example: Shorten retention in a staging environment**
 
 ```php
-add_filter( 'smr_retention_days', function( int $days ): int {
+add_filter( 'smart_media_replacement_retention_days', function( int $days ): int {
     if ( defined( 'WP_ENV' ) && 'staging' === WP_ENV ) {
         return 7;
     }
@@ -211,14 +287,14 @@ add_filter( 'smr_retention_days', function( int $days ): int {
 **Example: Disable expiration entirely, overriding settings**
 
 ```php
-add_filter( 'smr_retention_days', function( int $days ): int {
+add_filter( 'smart_media_replacement_retention_days', function( int $days ): int {
     return 0;
 } );
 ```
 
 ---
 
-### `smr_cleanup_time_limit`
+### `smart_media_replacement_cleanup_time_limit`
 
 Filters the number of seconds the daily cron cleanup is allowed to run before stopping gracefully. Sites not reached within the budget are processed on the next daily run. This prevents the cron from exceeding PHP's `max_execution_time` on large networks.
 
@@ -241,7 +317,7 @@ The default is `max_execution_time - 10` seconds (with a floor of 5). If `max_ex
 **Example: Allow the cron 50 seconds on a server with a 60-second PHP limit**
 
 ```php
-add_filter( 'smr_cleanup_time_limit', function( int $seconds ): int {
+add_filter( 'smart_media_replacement_cleanup_time_limit', function( int $seconds ): int {
     return 50;
 } );
 ```
@@ -251,14 +327,14 @@ add_filter( 'smr_cleanup_time_limit', function( int $seconds ): int {
 **Example: Give the cron more time on a server you control**
 
 ```php
-add_filter( 'smr_cleanup_time_limit', function( int $seconds ): int {
+add_filter( 'smart_media_replacement_cleanup_time_limit', function( int $seconds ): int {
     return 120;
 } );
 ```
 
 ---
 
-### `smr_cleanup_chunk_size`
+### `smart_media_replacement_cleanup_chunk_size`
 
 Filters the number of expired revisions processed per database round-trip during cleanup. Lowering this reduces peak memory at the cost of more queries. Raising it reduces query count but increases memory per batch.
 
@@ -277,7 +353,7 @@ Filters the number of expired revisions processed per database round-trip during
 **Example: Reduce chunk size on a memory-constrained server**
 
 ```php
-add_filter( 'smr_cleanup_chunk_size', function( int $size ): int {
+add_filter( 'smart_media_replacement_cleanup_chunk_size', function( int $size ): int {
     return 25;
 } );
 ```
@@ -287,14 +363,14 @@ add_filter( 'smr_cleanup_chunk_size', function( int $size ): int {
 **Example: Increase chunk size when bulk-clearing a large backlog**
 
 ```php
-add_filter( 'smr_cleanup_chunk_size', function( int $size ): int {
+add_filter( 'smart_media_replacement_cleanup_chunk_size', function( int $size ): int {
     return 500;
 } );
 ```
 
 ---
 
-### `smr_revision_directory`
+### `smart_media_replacement_revision_directory`
 
 Filters the base filesystem path where revision files are stored. By default this is `{uploads_dir}/smr-revisions`. Use this hook to redirect storage to a different location — a separate disk, a mounted network share, or a path outside the web root.
 
@@ -313,7 +389,7 @@ Filters the base filesystem path where revision files are stored. By default thi
 **Example: Store revisions outside the web root**
 
 ```php
-add_filter( 'smr_revision_directory', function( string $path ): string {
+add_filter( 'smart_media_replacement_revision_directory', function( string $path ): string {
     return '/var/media-revisions/smr';
 } );
 ```
@@ -323,7 +399,7 @@ add_filter( 'smr_revision_directory', function( string $path ): string {
 **Example: Store revisions on a separate mounted drive**
 
 ```php
-add_filter( 'smr_revision_directory', function( string $path ): string {
+add_filter( 'smart_media_replacement_revision_directory', function( string $path ): string {
     return '/mnt/storage/wp-revisions';
 } );
 ```
@@ -333,7 +409,7 @@ add_filter( 'smr_revision_directory', function( string $path ): string {
 **Example: Use a per-site subdirectory on multisite**
 
 ```php
-add_filter( 'smr_revision_directory', function( string $path ): string {
+add_filter( 'smart_media_replacement_revision_directory', function( string $path ): string {
     $blog_id = get_current_blog_id();
     $upload_dir = wp_upload_dir();
     return trailingslashit( $upload_dir['basedir'] ) . 'smr-revisions/site-' . $blog_id;
@@ -345,7 +421,7 @@ add_filter( 'smr_revision_directory', function( string $path ): string {
 **Example: Use an environment variable to configure the path**
 
 ```php
-add_filter( 'smr_revision_directory', function( string $path ): string {
+add_filter( 'smart_media_replacement_revision_directory', function( string $path ): string {
     $env_path = getenv( 'SMR_REVISION_DIR' );
     return $env_path ?: $path;
 } );
@@ -419,6 +495,70 @@ add_filter( 'smart_media_replacement_enforce_dimensions', function( bool $enforc
     return $enforce;
 }, 10, 2 );
 ```
+
+---
+
+### `smart_media_replacement_audit_scanned_meta_keys`
+
+Post meta keys the audit scanner walks looking for page-builder media references. Each entry is `[ 'key' => string, 'format' => 'json'|'serialized' ]`.
+
+**Default:** Elementor (`_elementor_data`) and Beaver Builder (`_fl_builder_data`), both JSON.
+
+```php
+add_filter( 'smart_media_replacement_audit_scanned_meta_keys', function ( array $keys ): array {
+	$keys[] = array(
+		'key'    => '_my_builder_layout',
+		'format' => 'json',
+	);
+	return $keys;
+} );
+```
+
+The parser deliberately over-collects — it gathers every positive integer it finds — and `PostScanner` then validates the candidates against real attachments, so a loose match here cannot corrupt usage counts.
+
+---
+
+### `smart_media_replacement_audit_scan_post_types`
+
+Post types the scanner walks for media references.
+
+**Default:** `array( 'post', 'page', 'wp_template', 'wp_template_part' )`
+
+```php
+add_filter( 'smart_media_replacement_audit_scan_post_types', function ( array $types ): array {
+	$types[] = 'product';
+	return $types;
+} );
+```
+
+Adding a post type does not retroactively index it — run a fresh scan (or `wp smr audit scan`) afterwards.
+
+---
+
+### `smart_media_replacement_audit_scan_statuses`
+
+Post statuses treated as live content. The progress denominator and the scan loop both read this filter, so they stay consistent and progress can still reach 100%.
+
+**Default:** `array( 'publish', 'future', 'draft', 'pending', 'private' )`
+
+```php
+// Only count published content as "using" a file.
+add_filter( 'smart_media_replacement_audit_scan_statuses', fn() => array( 'publish' ) );
+```
+
+---
+
+### `smart_media_replacement_audit_batch_size`
+
+How many posts the scanner indexes per cron tick. Lower it on constrained hosting, raise it to finish large libraries faster.
+
+**Default:** `50`
+
+```php
+add_filter( 'smart_media_replacement_audit_batch_size', fn() => 25 );
+```
+
+Values below 1 are clamped to 1.
 
 ---
 
@@ -573,7 +713,7 @@ add_action( 'smart_media_replacement_file_replaced', function( int $attachment_i
 
 ---
 
-### `smr_revision_created`
+### `smart_media_replacement_revision_created`
 
 Fires after a new revision has been successfully saved to the database and to disk.
 
@@ -592,7 +732,7 @@ Fires after a new revision has been successfully saved to the database and to di
 **Example: Log revision creation to an audit trail**
 
 ```php
-add_action( 'smr_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
+add_action( 'smart_media_replacement_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
     error_log( sprintf(
         'SMR: Revision %d created for attachment %d (version %s)',
         $revision_id,
@@ -607,7 +747,7 @@ add_action( 'smr_revision_created', function( int $revision_id, int $attachment_
 **Example: Store revision metadata in post meta for quick lookups**
 
 ```php
-add_action( 'smr_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
+add_action( 'smart_media_replacement_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
     update_post_meta( $attachment_id, '_smr_latest_revision_id', $revision_id );
     update_post_meta( $attachment_id, '_smr_latest_version', $data['version'] );
 }, 10, 3 );
@@ -618,7 +758,7 @@ add_action( 'smr_revision_created', function( int $revision_id, int $attachment_
 **Example: Trigger a webhook when a revision is created**
 
 ```php
-add_action( 'smr_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
+add_action( 'smart_media_replacement_revision_created', function( int $revision_id, int $attachment_id, array $data ): void {
     wp_remote_post( 'https://hooks.example.com/smr', [
         'body' => json_encode([
             'event'         => 'revision_created',
@@ -634,7 +774,7 @@ add_action( 'smr_revision_created', function( int $revision_id, int $attachment_
 
 ---
 
-### `smr_revision_restored`
+### `smart_media_replacement_revision_restored`
 
 Fires after a revision has been successfully restored as the live attachment file.
 
@@ -652,7 +792,7 @@ Fires after a revision has been successfully restored as the live attachment fil
 **Example: Purge CDN cache after a restore**
 
 ```php
-add_action( 'smr_revision_restored', function( int $revision_id, int $attachment_id ): void {
+add_action( 'smart_media_replacement_revision_restored', function( int $revision_id, int $attachment_id ): void {
     $url = wp_get_attachment_url( $attachment_id );
     my_cdn_purge( $url );
 }, 10, 2 );
@@ -663,7 +803,7 @@ add_action( 'smr_revision_restored', function( int $revision_id, int $attachment
 **Example: Log restores separately from replacements**
 
 ```php
-add_action( 'smr_revision_restored', function( int $revision_id, int $attachment_id ): void {
+add_action( 'smart_media_replacement_revision_restored', function( int $revision_id, int $attachment_id ): void {
     $entry = sprintf(
         "[%s] User %d restored revision %d for attachment %d\n",
         current_time( 'Y-m-d H:i:s' ),
@@ -680,7 +820,7 @@ add_action( 'smr_revision_restored', function( int $revision_id, int $attachment
 **Example: Update a "last restored" post meta field**
 
 ```php
-add_action( 'smr_revision_restored', function( int $revision_id, int $attachment_id ): void {
+add_action( 'smart_media_replacement_revision_restored', function( int $revision_id, int $attachment_id ): void {
     update_post_meta( $attachment_id, '_smr_last_restored_revision', $revision_id );
     update_post_meta( $attachment_id, '_smr_last_restored_at', current_time( 'mysql' ) );
 }, 10, 2 );
@@ -688,7 +828,7 @@ add_action( 'smr_revision_restored', function( int $revision_id, int $attachment
 
 ---
 
-### `smr_revisions_cleaned`
+### `smart_media_replacement_revisions_cleaned`
 
 Fires after old revisions have been deleted. This hook fires in two distinct situations — when the max revision count is exceeded, and when the retention period expires. Both pass the same parameters.
 
@@ -706,7 +846,7 @@ Fires after old revisions have been deleted. This hook fires in two distinct sit
 **Example: Log how many revisions were cleaned and why**
 
 ```php
-add_action( 'smr_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
+add_action( 'smart_media_replacement_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
     error_log( sprintf(
         'SMR: Cleaned %d revision(s) for attachment %d. IDs: %s',
         count( $deleted_ids ),
@@ -721,7 +861,7 @@ add_action( 'smr_revisions_cleaned', function( int $attachment_id, array $delete
 **Example: Notify an admin if a large number of revisions were deleted at once**
 
 ```php
-add_action( 'smr_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
+add_action( 'smart_media_replacement_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
     if ( count( $deleted_ids ) >= 10 ) {
         wp_mail(
             get_option( 'admin_email' ),
@@ -741,7 +881,7 @@ add_action( 'smr_revisions_cleaned', function( int $attachment_id, array $delete
 **Example: Remove orphaned files from a custom backup location**
 
 ```php
-add_action( 'smr_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
+add_action( 'smart_media_replacement_revisions_cleaned', function( int $attachment_id, array $deleted_ids ): void {
     foreach ( $deleted_ids as $revision_id ) {
         $backup = '/mnt/backup/smr/' . $revision_id . '.bak';
         if ( file_exists( $backup ) ) {
@@ -1003,19 +1143,83 @@ wp smr db cleanup --yes
 
 ---
 
+### `wp smr audit scan`
+
+Builds the media audit index. Runs every scan phase synchronously in the current process rather than scheduling cron ticks, and cancels the events the batch runner schedules as it goes, so no stray cron entry survives the command.
+
+**Why this matters on multisite:** WP-Cron only fires for a site that is receiving a request. A scan started from a quiet subsite's admin can sit at 0% indefinitely. This command is the reliable path.
+
+```
+[--site-id=<id>]   Scan a specific site (multisite only).
+[--network]        Scan every site on the network (multisite only).
+[--yes]            Skip the confirmation prompt when using --network.
+```
+
+```bash
+wp smr audit scan
+wp smr audit scan --site-id=3
+wp smr audit scan --network --yes
+```
+
+Each pass starts from a clean slate — the index is truncated and rebuilt, exactly as the "Scan Now" button does.
+
+---
+
+### `wp smr audit status`
+
+Reports index state without changing anything.
+
+```
+[--site-id=<id>]     Report on a specific site (multisite only).
+[--network]          Report on every site (multisite only).
+[--format=<format>]  table (default), json, csv, or yaml.
+```
+
+```bash
+wp smr audit status
+wp smr audit status --network --format=json
+```
+
+Columns: `tables` (`ok`/`missing`), `index_built`, `status` (`idle`/`scanning`/`complete`), `progress`, `indexed_files`, `unused_files`. With `--network`, a leading `site_id` column is added.
+
+`tables: missing` on a site means it was never provisioned — run `wp smr audit scan` on it, or trigger the `smr_db_health_check` cron, either of which recreates the tables.
+
+---
+
+### `wp smr audit clear`
+
+Empties the index and summary tables and resets scan state. The tables themselves are kept; run a scan to repopulate.
+
+```
+[--site-id=<id>]   Clear a specific site (multisite only).
+[--network]        Clear every site on the network (multisite only).
+[--yes]            Skip the confirmation prompt.
+```
+
+```bash
+wp smr audit clear
+wp smr audit clear --network --yes
+```
+
+---
+
 ## Quick Reference
 
 ### Filters
 
 | Hook | File | Controls |
 |------|------|----------|
-| `smr_create_revision` | `Functions/RevisionManager.php` | Whether to create a revision (`bool`) |
-| `smr_max_revisions` | `Functions/RevisionManager.php` | Max revisions per attachment (`int`) |
-| `smr_retention_days` | `Functions/RevisionManager.php` | Retention period in days (`int`) |
-| `smr_cleanup_time_limit` | `Functions/RevisionManager.php` | Cron cleanup time budget in seconds (`int`) |
-| `smr_cleanup_chunk_size` | `Functions/RevisionManager.php` | Expired revisions processed per DB batch (`int`) |
-| `smr_revision_directory` | `Functions/RevisionStorage.php` | Revision file storage path (`string`) |
+| `smart_media_replacement_create_revision` | `Functions/RevisionManager.php` | Whether to create a revision (`bool`) |
+| `smart_media_replacement_max_revisions` | `Functions/RevisionManager.php` | Max revisions per attachment (`int`) |
+| `smart_media_replacement_retention_days` | `Functions/RevisionManager.php` | Retention period in days (`int`) |
+| `smart_media_replacement_cleanup_time_limit` | `Functions/RevisionManager.php` | Cron cleanup time budget in seconds (`int`) |
+| `smart_media_replacement_cleanup_chunk_size` | `Functions/RevisionManager.php` | Expired revisions processed per DB batch (`int`) |
+| `smart_media_replacement_revision_directory` | `Functions/RevisionStorage.php` | Revision file storage path (`string`) |
 | `smart_media_replacement_enforce_dimensions` | `Functions/ManageMedia.php` | Strict dimension matching on replace (`bool`) |
+| `smart_media_replacement_audit_scanned_meta_keys` | `Functions/Audit/MetaParser.php` | Page-builder meta keys scanned (`array`) |
+| `smart_media_replacement_audit_scan_post_types` | `Functions/Audit/BatchRunner.php` | Post types the scanner walks (`string[]`) |
+| `smart_media_replacement_audit_scan_statuses` | `Functions/Audit/BatchRunner.php` | Post statuses treated as live (`string[]`) |
+| `smart_media_replacement_audit_batch_size` | `Functions/Audit/BatchRunner.php` | Posts indexed per cron tick (`int`) |
 
 ### Actions
 
@@ -1023,9 +1227,9 @@ wp smr db cleanup --yes
 |------|------|-----------|
 | `smart_media_replacement_before_replace` | `Functions/ManageMedia.php` | Validation passed, file not yet swapped |
 | `smart_media_replacement_file_replaced` | `Functions/ManageMedia.php` | File swapped, metadata updated |
-| `smr_revision_created` | `Functions/RevisionManager.php` | Revision saved to DB and disk |
-| `smr_revision_restored` | `Functions/RevisionManager.php` | Revision restored as live file |
-| `smr_revisions_cleaned` | `Functions/RevisionManager.php` | Old revisions deleted (limit or expiry) |
+| `smart_media_replacement_revision_created` | `Functions/RevisionManager.php` | Revision saved to DB and disk |
+| `smart_media_replacement_revision_restored` | `Functions/RevisionManager.php` | Revision restored as live file |
+| `smart_media_replacement_revisions_cleaned` | `Functions/RevisionManager.php` | Old revisions deleted (limit or expiry) |
 
 ### WP-CLI Commands
 
@@ -1035,3 +1239,6 @@ wp smr db cleanup --yes
 | `wp smr db repair` | Recreate the revisions table if missing |
 | `wp smr db status` | Show revision counts and storage usage |
 | `wp smr db cleanup` | Delete expired revisions per retention policy |
+| `wp smr audit scan` | Build the media audit index (runs synchronously) |
+| `wp smr audit status` | Index state, file counts and unused count |
+| `wp smr audit clear` | Wipe the index and scan state (tables are kept) |

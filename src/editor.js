@@ -121,7 +121,7 @@ async function fetchVersionInfo(attachmentId) {
 			nextMajor: `${major + 1}.0`,
 			count,
 		};
-	} catch (e) {
+	} catch {
 		return null;
 	}
 }
@@ -196,7 +196,7 @@ function refreshAfterReplacement(attachmentId, mediaUrl) {
 			attachmentId,
 			{ context: 'view' },
 		]);
-	} catch (e) {
+	} catch {
 		// Core store may be unavailable in some contexts; non-fatal.
 	}
 
@@ -209,7 +209,7 @@ function refreshAfterReplacement(attachmentId, mediaUrl) {
 				attachment.fetch();
 			}
 		}
-	} catch (e) {
+	} catch {
 		// Non-fatal.
 	}
 

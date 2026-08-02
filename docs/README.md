@@ -17,7 +17,7 @@ Documentation for the Smart Media Replacement WordPress plugin.
 
 - **Replace a file:** Media Library → Click "Replace" or open attachment → "Replace File" button
 - **Supported files:** All WordPress-supported media types (images, PDFs, documents, audio, video)
-- **Requirements:** WordPress 6.6+, PHP 7.0+
+- **Requirements:** WordPress 7.0+, PHP 8.0+
 
 ## Support
 

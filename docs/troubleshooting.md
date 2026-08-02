@@ -205,6 +205,60 @@ add_action('admin_notices', function() {
 
 ---
 
+## Media Audit
+
+### Media Audit menu is missing
+
+The audit subsystem is gated on a setting. Check **Settings → Smart Media Replacement → Media Audit → Enable Media Audit** (or **Network Admin → Settings → Smart Media Replacement** on multisite). When it is off, the screen is hidden, the REST route is not registered, and posts are not indexed on save. Existing index data is left untouched, so re-enabling it does not require a rescan.
+
+### Media Audit table is empty, or every file says "Scan required"
+
+The index has not been built yet. The plugin deliberately does not start a scan on activation — an unbounded index build across every site of a network at activation time is hostile — so the first scan is user-initiated.
+
+Click **Scan Now** on the audit screen, or run:
+
+```bash
+wp smr audit scan
+```
+
+### Scan appears stuck at 0% on a multisite subsite
+
+WP-Cron only fires for a site that is receiving requests. A scan started from a quiet subsite's admin has nothing to advance it.
+
+Build the index from the command line instead:
+
+```bash
+wp smr audit scan --site-id=<id>
+wp smr audit scan --network        # every site
+```
+
+`wp smr audit status --network` shows which sites have a built index.
+
+### A file is marked "Unused" but I know it is used
+
+The scanner looks at post content (blocks and classic markup), featured images, and page-builder post meta, across the post types in `smart_media_replacement_audit_scan_post_types`. It cannot see:
+
+- URLs hardcoded in theme template files
+- Custom post types not added via the `smart_media_replacement_audit_scan_post_types` filter
+- Page-builder meta keys not registered via `smart_media_replacement_audit_scanned_meta_keys`
+- References from outside your site
+
+Add the relevant post types or meta keys via those filters, then rescan.
+
+### Media Audit screen is blank, with a console error about unstable APIs
+
+The audit interface bundles `@wordpress/dataviews`, which opts into WordPress private APIs. That only works on WordPress versions where core lists `@wordpress/dataviews` in its private-API allow-list — WordPress 7.0 and later. Check your WordPress version; the plugin declares `Requires at least: 7.0` for exactly this reason.
+
+### `wp smr audit status` reports `tables: missing`
+
+That site was never provisioned. It self-heals on next use — load the audit screen, run a scan, or trigger the health-check cron:
+
+```bash
+wp cron event run smr_db_health_check --url=<site-url>
+```
+
+---
+
 ## Debug Mode
 
 ### Enable WordPress Debug Logging

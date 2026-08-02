@@ -282,7 +282,7 @@
 
 /* View Revisions Button Badge */
 .smr-revision-count-badge {
-	font-weight: normal;
+	font-weight: 400;
 	opacity: 0.8;
 }
 
@@ -302,6 +302,7 @@
 
 /* Responsive adjustments */
 @media screen and (max-width: 782px) {
+
 	.smr-revision-header {
 		flex-direction: column;
 		align-items: flex-start;

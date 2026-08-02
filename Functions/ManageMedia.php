@@ -38,14 +38,32 @@ class ManageMedia {
 			return;
 		}
 
+		// Read the generated manifest so the version is the build content hash
+		// rather than a hardcoded string — a fixed version meant this bundle
+		// stayed cached in browsers across every plugin release.
+		$asset_file = SMART_MEDIA_REPLACEMENT_PLUGIN_PATH . 'build/smart-media-replacement.asset.php';
+		if ( ! file_exists( $asset_file ) ) {
+			return;
+		}
+		$asset = include $asset_file;
+
+		// jquery and media-views aren't in the generated dependency list — the
+		// source uses the wp.media global and jQuery-driven modal hooks rather
+		// than imports — so they're merged in explicitly.
+		$dependencies = array_unique(
+			array_merge( $asset['dependencies'], array( 'jquery', 'media-views' ) )
+		);
+
 		// Enqueue the script.
 		wp_enqueue_script(
 			'smart-media-replacement-script',
 			SMART_MEDIA_REPLACEMENT_PLUGIN_URL . 'build/smart-media-replacement.js',
-			array( 'jquery', 'wp-i18n', 'media-views' ),
-			'1.0.0',
+			$dependencies,
+			$asset['version'],
 			true
 		);
+
+		wp_set_script_translations( 'smart-media-replacement-script', 'smart-media-replacement' );
 
 		// Get max revisions setting.
 		$max_revisions = (int) Settings::get( 'smr_max_revisions', 10 );
@@ -395,7 +413,16 @@ class ManageMedia {
 			// the user keeps their new file rather than losing both old and new.
 			$target_path = path_join( $current_dir, $original_filename );
 
-			if ( ! move_uploaded_file( $file['tmp_name'], $target_path ) ) {
+			global $wp_filesystem;
+			if ( ! WP_Filesystem() ) {
+				wp_send_json_error( __( 'Could not access the filesystem to complete the replacement.', 'smart-media-replacement' ) );
+			}
+
+			// $overwrite = true: $target_path is the file being replaced, so it
+			// already exists on disk — WP_Filesystem::move() refuses to overwrite
+			// by default. The upload's authenticity was already confirmed via
+			// is_uploaded_file() above, so this doesn't weaken that check.
+			if ( ! $wp_filesystem->move( $file['tmp_name'], $target_path, true ) ) {
 				wp_send_json_error( __( 'Failed to move uploaded file.', 'smart-media-replacement' ) );
 			}
 
