@@ -55,6 +55,7 @@ Paginated, filterable list of audited attachments. Backs the Media Audit screen.
 | `reference_type` | string | `''` | `block`, `featured_image`, `classic`, `postmeta` |
 | `usage_filter` | string | `''` | `used` or `unused` |
 | `missing_alt` | boolean | `false` | Restrict to references embedded without alt text |
+| `marked` | string | `''` | `marked` or `unmarked` |
 
 **Response:**
 
@@ -73,17 +74,66 @@ Paginated, filterable list of audited attachments. Backs the Media Audit screen.
       "alt_text": "",
       "content_alt_missing": false,
       "date": "2026-01-14 09:22:41",
-      "usage_count": 3
+      "usage_count": 3,
+      "marked_for_deletion": false
     }
   ],
   "total": 412,
-  "pages": 21
+  "pages": 21,
+  "marked_total": 18
 }
 ```
 
 The endpoint reads the denormalized summary table — a flat indexed scan with no `GROUP BY` and no postmeta join — and primes the post and meta caches for the whole page in two batched queries before mapping rows, avoiding the N+1 a raw `$wpdb` result set would otherwise incur.
 
-Deletions are not handled here. The client uses core's `DELETE /wp/v2/media/<id>?force=true`.
+### `POST /smart-media-replacement/v1/audit-media/mark`
+
+Marks or unmarks attachments for deletion. The flag is stored as attachment meta (`_smr_marked_for_deletion`, a unix timestamp) and projected into the summary table's `marked_for_deletion` column, so it survives a rescan.
+
+**Capability:** `manage_options` + `upload_files`, plus `delete_post` per attachment.
+
+| Parameter | Type | Default | Notes |
+|-----------|------|---------|-------|
+| `marked` | boolean | *required* | `true` to mark, `false` to clear |
+| `ids` | integer[] | `[]` | Explicit attachments to act on |
+| `all_matching` | boolean | `false` | Act on every attachment matching the filters below instead of `ids` |
+| `search` | string | `''` | Filename substring |
+| `media_type` | string | `''` | `Image`, `Video`, `Audio`, `Document` |
+| `reference_type` | string | `''` | `block`, `featured_image`, `classic`, `postmeta` |
+| `usage_filter` | string | `''` | `used` or `unused` |
+| `missing_alt` | boolean | `false` | Restrict to references embedded without alt text |
+| `marked_filter` | string | `''` | `marked` or `unmarked` |
+
+`all_matching` exists because DataViews prunes its selection to the current page, so a cross-page "select all" cannot be expressed as an ID list from the client. Passing the filters instead lets the server resolve the set itself. It is capped at `IndexTable::MARK_MATCHING_LIMIT` (5,000); the response reports `capped` when more rows matched than were touched.
+
+**Response:** `{ "count": 412, "total": 412, "capped": false, "limit": 5000, "marked_total": 412 }` for `all_matching`, or `{ "count": 3, "ids": [12, 14, 19], "marked_total": 415 }` for an ID list.
+
+### `DELETE /smart-media-replacement/v1/audit-media`
+
+Permanently deletes attachments.
+
+**Capability:** `manage_options` + `upload_files`, plus `delete_post` per attachment.
+
+| Parameter | Type | Default | Notes |
+|-----------|------|---------|-------|
+| `ids` | integer[] | `[]` | Attachments to delete |
+| `marked` | boolean | `false` | Delete the marked queue instead of `ids` |
+
+This is where the "unused files only" rule is enforced. Every ID is checked against the index before anything is removed, and an attachment is refused unless it has a summary row showing `usage_count = 0` — a missing row means usage is *unknown*, not zero, and is refused rather than assumed safe. `wp_delete_attachment()` is called with `force_delete` set from `MEDIA_TRASH`, so sites with the media trash enabled keep their files recoverable.
+
+Capped at `RestController::DELETE_BATCH_LIMIT` (100) per request; the client loops until the queue drains.
+
+**Response:**
+
+```json
+{
+  "deleted": [14, 19],
+  "skipped": [{ "id": 12, "reason": "in_use", "usage": 3 }],
+  "marked_total": 1
+}
+```
+
+Skip reasons: `in_use`, `not_indexed`, `forbidden`, `not_attachment`, `delete_failed`.
 
 ---
 

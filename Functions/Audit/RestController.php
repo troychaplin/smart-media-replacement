@@ -53,6 +53,16 @@ class RestController extends WP_REST_Controller {
 	private $backfill_ids = array();
 
 	/**
+	 * Maximum attachments deleted in a single request.
+	 *
+	 * Deletion touches the filesystem per file, so a large queue is walked in
+	 * batches by the client rather than in one long-running request.
+	 *
+	 * @var int
+	 */
+	const DELETE_BATCH_LIMIT = 100;
+
+	/**
 	 * Register the collection route.
 	 */
 	public function register_routes(): void {
@@ -66,7 +76,26 @@ class RestController extends WP_REST_Controller {
 					'permission_callback' => array( $this, 'get_items_permissions_check' ),
 					'args'                => $this->get_collection_params(),
 				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'delete_items' ),
+					'permission_callback' => array( $this, 'delete_items_permissions_check' ),
+					'args'                => $this->get_delete_params(),
+				),
 				'schema' => array( $this, 'get_public_item_schema' ),
+			)
+		);
+
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->rest_base . '/mark',
+			array(
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'mark_items' ),
+					'permission_callback' => array( $this, 'delete_items_permissions_check' ),
+					'args'                => $this->get_mark_params(),
+				),
 			)
 		);
 	}
@@ -103,6 +132,7 @@ class RestController extends WP_REST_Controller {
 		$reference_type = sanitize_key( (string) $request->get_param( 'reference_type' ) );
 		$usage_filter   = sanitize_key( (string) $request->get_param( 'usage_filter' ) );
 		$missing_alt    = (bool) $request->get_param( 'missing_alt' );
+		$marked         = sanitize_key( (string) $request->get_param( 'marked' ) );
 
 		$result = IndexTable::get_attachments_rest(
 			search: $search,
@@ -114,6 +144,7 @@ class RestController extends WP_REST_Controller {
 			reference_type: $reference_type,
 			usage_filter: $usage_filter,
 			missing_alt: $missing_alt,
+			marked: $marked,
 		);
 
 		// Prime the post + meta caches for the whole page in two batched queries
@@ -140,9 +171,12 @@ class RestController extends WP_REST_Controller {
 
 		return new WP_REST_Response(
 			array(
-				'items' => $items,
-				'total' => (int) $result['total'],
-				'pages' => (int) ceil( $result['total'] / $per_page ),
+				'items'        => $items,
+				'total'        => (int) $result['total'],
+				'pages'        => (int) ceil( $result['total'] / $per_page ),
+				// Size of the review queue regardless of the active filters, so
+				// the toolbar can report it without a second request.
+				'marked_total' => IndexTable::marked_count(),
 			)
 		);
 	}
@@ -210,6 +244,7 @@ class RestController extends WP_REST_Controller {
 			'content_alt_missing' => (bool) ( $row->content_alt_missing ?? false ),
 			'date'                => get_post_field( 'post_date', $id ),
 			'usage_count'         => (int) $row->usage_count,
+			'marked_for_deletion' => (bool) ( $row->marked_for_deletion ?? false ),
 		);
 	}
 
@@ -301,10 +336,274 @@ class RestController extends WP_REST_Controller {
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
+				'marked_for_deletion' => array(
+					'description' => __( 'Whether the file is queued for deletion.', 'smart-media-replacement' ),
+					'type'        => 'boolean',
+					'context'     => array( 'view' ),
+					'readonly'    => true,
+				),
 			),
 		);
 
 		return $this->add_additional_fields_schema( $this->schema );
+	}
+
+	/**
+	 * Check whether the current user may change or delete audited attachments.
+	 *
+	 * Screen-level gate only. Deletion is additionally checked per attachment in
+	 * delete_items(), because manage_options does not imply the right to delete
+	 * any particular post.
+	 *
+	 * @param \WP_REST_Request $request Request object.
+	 * @return bool
+	 */
+	public function delete_items_permissions_check( $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+		return current_user_can( 'manage_options' ) && current_user_can( 'upload_files' );
+	}
+
+	/**
+	 * Mark or unmark attachments for deletion.
+	 *
+	 * Accepts either an explicit list of IDs or `all_matching`, which applies
+	 * the same filters the list is showing. The filter form exists because
+	 * DataViews prunes its selection to the current page, so a cross-page
+	 * "select all" cannot be expressed as an ID list from the client.
+	 *
+	 * @param \WP_REST_Request $request Request object.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function mark_items( $request ) {
+		$marked       = (bool) $request->get_param( 'marked' );
+		$all_matching = (bool) $request->get_param( 'all_matching' );
+
+		if ( $all_matching ) {
+			$result = IndexTable::mark_matching(
+				$marked,
+				sanitize_text_field( (string) $request->get_param( 'search' ) ),
+				sanitize_text_field( (string) $request->get_param( 'media_type' ) ),
+				sanitize_key( (string) $request->get_param( 'reference_type' ) ),
+				sanitize_key( (string) $request->get_param( 'usage_filter' ) ),
+				(bool) $request->get_param( 'missing_alt' ),
+				sanitize_key( (string) $request->get_param( 'marked_filter' ) )
+			);
+
+			return new WP_REST_Response(
+				array(
+					'count'        => $result['count'],
+					'total'        => $result['total'],
+					'capped'       => $result['capped'],
+					'limit'        => IndexTable::MARK_MATCHING_LIMIT,
+					'marked_total' => IndexTable::marked_count(),
+				)
+			);
+		}
+
+		$ids = array_map( 'intval', (array) $request->get_param( 'ids' ) );
+		$ids = array_values( array_filter( $ids ) );
+
+		if ( ! $ids ) {
+			return new \WP_Error(
+				'smr_audit_no_ids',
+				__( 'No attachments were supplied.', 'smart-media-replacement' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		// Marking is a precursor to deletion, so gate it on the same capability
+		// rather than letting a user queue files they could never delete.
+		$ids = array_values(
+			array_filter(
+				$ids,
+				static fn( $id ) => current_user_can( 'delete_post', $id )
+			)
+		);
+
+		$count = IndexTable::set_marked( $ids, $marked );
+
+		return new WP_REST_Response(
+			array(
+				'count'        => $count,
+				'ids'          => $ids,
+				'marked_total' => IndexTable::marked_count(),
+			)
+		);
+	}
+
+	/**
+	 * Permanently delete attachments.
+	 *
+	 * This is where the "unused files only" rule actually lives. The screen has
+	 * always hidden the control for in-use files, but that is presentation; a
+	 * request that reaches here is checked against the index before anything is
+	 * deleted, and an attachment with no summary row is refused rather than
+	 * assumed unused.
+	 *
+	 * @param \WP_REST_Request $request Request object.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function delete_items( $request ) {
+		if ( (bool) $request->get_param( 'marked' ) ) {
+			$ids = IndexTable::get_marked_ids( self::DELETE_BATCH_LIMIT );
+
+			// An empty queue is a successful no-op, not a client error. The
+			// client drains the queue a batch at a time and cannot know in
+			// advance which pass is the last, so the pass that finds nothing
+			// left must not come back as a failure.
+			if ( ! $ids ) {
+				return new WP_REST_Response(
+					array(
+						'deleted'      => array(),
+						'skipped'      => array(),
+						'marked_total' => 0,
+					)
+				);
+			}
+		} else {
+			$ids = array_map( 'intval', (array) $request->get_param( 'ids' ) );
+			$ids = array_values( array_filter( $ids ) );
+
+			// An explicit call naming no attachments really is a bad request.
+			if ( ! $ids ) {
+				return new \WP_Error(
+					'smr_audit_no_ids',
+					__( 'No attachments were supplied.', 'smart-media-replacement' ),
+					array( 'status' => 400 )
+				);
+			}
+		}
+
+		if ( count( $ids ) > self::DELETE_BATCH_LIMIT ) {
+			$ids = array_slice( $ids, 0, self::DELETE_BATCH_LIMIT );
+		}
+
+		$usage   = IndexTable::usage_counts_for( $ids );
+		$deleted = array();
+		$skipped = array();
+
+		foreach ( $ids as $id ) {
+			if ( ! current_user_can( 'delete_post', $id ) ) {
+				$skipped[] = array(
+					'id'     => $id,
+					'reason' => 'forbidden',
+				);
+				continue;
+			}
+
+			if ( ! array_key_exists( $id, $usage ) ) {
+				// No summary row means usage is unknown, not zero. Refuse.
+				$skipped[] = array(
+					'id'     => $id,
+					'reason' => 'not_indexed',
+				);
+				continue;
+			}
+
+			if ( $usage[ $id ] > 0 ) {
+				$skipped[] = array(
+					'id'     => $id,
+					'reason' => 'in_use',
+					'usage'  => $usage[ $id ],
+				);
+				continue;
+			}
+
+			if ( 'attachment' !== get_post_type( $id ) ) {
+				$skipped[] = array(
+					'id'     => $id,
+					'reason' => 'not_attachment',
+				);
+				continue;
+			}
+
+			// force_delete respects MEDIA_TRASH: when a site has enabled the
+			// media trash, pass false so files land there and stay recoverable.
+			$force = ! ( defined( 'MEDIA_TRASH' ) && MEDIA_TRASH );
+
+			if ( wp_delete_attachment( $id, $force ) ) {
+				$deleted[] = $id;
+			} else {
+				$skipped[] = array(
+					'id'     => $id,
+					'reason' => 'delete_failed',
+				);
+			}
+		}
+
+		return new WP_REST_Response(
+			array(
+				'deleted'      => $deleted,
+				'skipped'      => $skipped,
+				'marked_total' => IndexTable::marked_count(),
+			)
+		);
+	}
+
+	/**
+	 * Parameters accepted by the mark endpoint.
+	 *
+	 * @return array
+	 */
+	public function get_mark_params(): array {
+		return array(
+			'ids'            => array(
+				'type'    => 'array',
+				'items'   => array( 'type' => 'integer' ),
+				'default' => array(),
+			),
+			'marked'         => array(
+				'type'     => 'boolean',
+				'required' => true,
+			),
+			'all_matching'   => array(
+				'type'    => 'boolean',
+				'default' => false,
+			),
+			'search'         => array(
+				'type'    => 'string',
+				'default' => '',
+			),
+			'media_type'     => array(
+				'type'    => 'string',
+				'default' => '',
+			),
+			'reference_type' => array(
+				'type'    => 'string',
+				'default' => '',
+			),
+			'usage_filter'   => array(
+				'type'    => 'string',
+				'default' => '',
+			),
+			'missing_alt'    => array(
+				'type'    => 'boolean',
+				'default' => false,
+			),
+			'marked_filter'  => array(
+				'type'    => 'string',
+				'default' => '',
+				'enum'    => array( '', 'marked', 'unmarked' ),
+			),
+		);
+	}
+
+	/**
+	 * Parameters accepted by the delete endpoint.
+	 *
+	 * @return array
+	 */
+	public function get_delete_params(): array {
+		return array(
+			'ids'    => array(
+				'type'    => 'array',
+				'items'   => array( 'type' => 'integer' ),
+				'default' => array(),
+			),
+			'marked' => array(
+				'type'    => 'boolean',
+				'default' => false,
+			),
+		);
 	}
 
 	/**
@@ -354,6 +653,11 @@ class RestController extends WP_REST_Controller {
 			'missing_alt'    => array(
 				'type'    => 'boolean',
 				'default' => false,
+			),
+			'marked'         => array(
+				'type'    => 'string',
+				'default' => '',
+				'enum'    => array( '', 'marked', 'unmarked' ),
 			),
 		);
 	}

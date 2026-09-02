@@ -114,24 +114,37 @@ Once it finishes, each file shows how many posts reference it. **Unused** (in re
 | Used In | Usage count — click it to see exactly which posts |
 | Size | File size on disk |
 | Alt Text | The attachment's alt text, or a "No alt" marker |
+| Queued | Whether the file is marked for deletion |
 | Date | Upload date |
+
+Switch between the table and a thumbnail **grid** with the layout control.
 
 ### Filtering
 
-Four filters narrow the list:
+Five filters narrow the list:
 
 - **Location** — how the file is referenced: Block, Featured Image, Content (classic markup), or Post Meta (page builders)
+- **Marked** — whether the file is in the deletion queue
 - **Type** — Image, Video, Audio, Document
-- **Used In** — Used or Unused
+- **Usage** — Used or Unused
 - **Without Alt** — images embedded in content without alt text
 
-Combine them: *Type: Image* + *Without Alt* gives you an accessibility worklist. *Used In: Unused* + sort by Size descending gives you the biggest cleanup wins first.
+Combine them: *Type: Image* + *Without Alt* gives you an accessibility worklist. *Usage: Unused* + sort by Size descending gives you the biggest cleanup wins first.
 
-### Deleting unused files
+### Reviewing before you delete
 
-Select unused files and use the bulk **Delete** action, or use the row action. Both are restricted to files with a usage count of zero — if a file is referenced anywhere, no delete control is offered for it.
+Deleting media is permanent, so the screen separates *choosing* files from *deleting* them. Marking is the review step.
 
-Before bulk deleting, be aware of what "Unused" cannot know about: URLs hardcoded in theme files, custom post types not included in the scan, and references from outside your site. Click through a usage count of zero on a few files you recognise before trusting it wholesale.
+1. **Filter to a candidate set** — say *Usage: Unused* + *Type: Image*.
+2. **Mark them.** Tick the rows you want and choose **Mark for deletion** from the bulk toolbar, or use **Mark all N matching files** in the yellow bar to mark the whole filtered set at once, across every page. (Marking the whole set is capped at 5,000 files per click; narrow the filters and repeat if you have more.)
+3. **Review the queue.** The yellow bar reports how many files are marked; **Review queue** filters the list down to exactly those. Take your time here — walk the list, click through a few usage counts, unmark anything you want to keep with **Remove mark**.
+4. **Delete.** **Delete all marked** empties the queue, or delete a selection with the bulk **Delete permanently** action.
+
+The queue is shared and it persists. Another administrator sees the same marked files, marks survive a rescan, and you can leave the screen and come back to the queue later.
+
+Files still referenced by a post are **skipped**, not deleted — they stay in the queue and the result message tells you how many were passed over. That rule is enforced on the server, so it holds regardless of what the browser sends.
+
+Before deleting, be aware of what "Unused" cannot know about: URLs hardcoded in theme files, custom post types not included in the scan, and references from outside your site. Click through a usage count of zero on a few files you recognise before trusting it wholesale.
 
 ### Keeping it current
 

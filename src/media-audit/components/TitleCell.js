@@ -1,12 +1,17 @@
-import { Button } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 
-export default function TitleCell({ item, onDelete }) {
-	// Only unused files get a delete control, matching the eligibility rule on
-	// the bulk action. Without this a file referenced by a dozen posts is one
-	// click and one confirm away from being permanently deleted.
-	const canDelete = item.usage_count === 0;
-
+/**
+ * File name cell, with the non-destructive row links.
+ *
+ * Deletion deliberately lives only in the DataViews actions menu: keeping a
+ * second delete control here meant two handlers, two confirmations and two
+ * places for the "unused files only" rule to drift.
+ *
+ * @param {Object} props      Component props.
+ * @param {Object} props.item Attachment row.
+ * @return {Element} The cell.
+ */
+export default function TitleCell({ item }) {
 	return (
 		<div className="smr-audit-title-cell">
 			<strong>{item.title}</strong>
@@ -14,21 +19,6 @@ export default function TitleCell({ item, onDelete }) {
 				<span>
 					<a href={item.edit_url}>{__('Edit', 'smart-media-replacement')}</a>
 				</span>
-				{canDelete && (
-					<>
-						<span className="smr-audit-row-actions__sep"> | </span>
-						<span>
-							<Button
-								variant="link"
-								isDestructive
-								className="smr-audit-delete"
-								onClick={() => onDelete(item)}
-							>
-								{__('Delete Permanently', 'smart-media-replacement')}
-							</Button>
-						</span>
-					</>
-				)}
 				<span className="smr-audit-row-actions__sep"> | </span>
 				<span>
 					<a href={item.file_url} target="_blank" rel="noreferrer">

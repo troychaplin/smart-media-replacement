@@ -31,6 +31,18 @@ class IndexTable {
 	const SUMMARY_TABLE_NAME = 'smr_audit_summary';
 
 	/**
+	 * Attachment meta flagging a file as queued for deletion.
+	 *
+	 * Meta is the source of truth rather than the summary column: the summary
+	 * projection is deleted and rebuilt from wp_posts on every scan, so a flag
+	 * living only there would not survive one. The summary column is a
+	 * projection of this key, joined in exactly like _smr_audit_filesize.
+	 *
+	 * @var string
+	 */
+	const MARKED_META_KEY = '_smr_marked_for_deletion';
+
+	/**
 	 * When true, writes skip incremental summary refresh. The batch scanner sets
 	 * this so a full scan does one set-based rebuild at the end instead of
 	 * refreshing the summary on every per-post write.
@@ -56,7 +68,7 @@ class IndexTable {
 	 *
 	 * @var string
 	 */
-	const DB_VERSION = '1.0.0';
+	const DB_VERSION = '1.1.0';
 
 	/**
 	 * Option holding the installed audit schema version.
@@ -185,13 +197,15 @@ class IndexTable {
 			has_featured_image tinyint(1) NOT NULL DEFAULT 0,
 			has_classic tinyint(1) NOT NULL DEFAULT 0,
 			has_postmeta tinyint(1) NOT NULL DEFAULT 0,
+			marked_for_deletion tinyint(1) NOT NULL DEFAULT 0,
 			PRIMARY KEY (attachment_id),
 			KEY media_type (media_type),
 			KEY usage_count (usage_count),
 			KEY file_size (file_size),
 			KEY post_date (post_date),
 			KEY post_title (post_title(191)),
-			KEY mt_date (media_type, post_date)
+			KEY mt_date (media_type, post_date),
+			KEY marked_for_deletion (marked_for_deletion)
 		) {$charset_collate};";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -341,9 +355,12 @@ class IndexTable {
 		$postmeta    = $wpdb->postmeta;
 		$media_case  = self::media_type_case_sql( 'p.post_mime_type' );
 
+		$marked_key = self::MARKED_META_KEY;
+
 		$sql = "INSERT INTO {$summary}
 			(attachment_id, mime_type, media_type, post_title, post_date, file_size, alt_text,
-			 usage_count, missing_alt, has_block, has_featured_image, has_classic, has_postmeta)
+			 usage_count, missing_alt, has_block, has_featured_image, has_classic, has_postmeta,
+			 marked_for_deletion)
 			SELECT
 				p.ID,
 				p.post_mime_type,
@@ -357,10 +374,12 @@ class IndexTable {
 				(SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM {$index} idx WHERE idx.attachment_id = p.ID AND idx.reference_type = 'block'),
 				(SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM {$index} idx WHERE idx.attachment_id = p.ID AND idx.reference_type = 'featured_image'),
 				(SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM {$index} idx WHERE idx.attachment_id = p.ID AND idx.reference_type = 'classic'),
-				(SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM {$index} idx WHERE idx.attachment_id = p.ID AND idx.reference_type = 'postmeta')
+				(SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM {$index} idx WHERE idx.attachment_id = p.ID AND idx.reference_type = 'postmeta'),
+				CASE WHEN pm_marked.meta_value IS NULL THEN 0 ELSE 1 END
 			FROM {$posts_table} p
 			LEFT JOIN {$postmeta} pm_size ON pm_size.post_id = p.ID AND pm_size.meta_key = '_smr_audit_filesize'
 			LEFT JOIN {$postmeta} pm_alt ON pm_alt.post_id = p.ID AND pm_alt.meta_key = '_wp_attachment_image_alt'
+			LEFT JOIN {$postmeta} pm_marked ON pm_marked.post_id = p.ID AND pm_marked.meta_key = '{$marked_key}'
 			WHERE p.post_type = 'attachment' AND p.post_status = 'inherit'
 			{$scope_where}";
 
@@ -494,61 +513,29 @@ class IndexTable {
 	}
 
 	/**
-	 * Return paginated attachments for the REST endpoint.
+	 * Build the shared WHERE fragment used by every filtered summary query.
 	 *
-	 * Reads the denormalized summary table: a flat indexed scan with no GROUP BY,
-	 * no CAST, and no postmeta join. media_type is an exact indexed match,
-	 * reference_type maps to boolean columns, and used/unused toggles on
-	 * usage_count.
+	 * Extracted so the list query, the match count and the set-based "mark all
+	 * matching" update cannot drift apart: a filter that selects a row in the
+	 * list must select exactly the same row when marking.
 	 *
 	 * @param string $search         Filename substring to match.
-	 * @param int    $per_page       Results per page.
-	 * @param int    $page           1-based page number.
-	 * @param string $orderby        One of title|date|usage|file_size.
-	 * @param string $order          ASC or DESC.
 	 * @param string $media_type     One of Image|Video|Audio|Document, or empty.
 	 * @param string $reference_type One of block|featured_image|classic|postmeta, or empty.
 	 * @param string $usage_filter   One of used|unused, or empty for all.
 	 * @param bool   $missing_alt    Restrict to references embedded without alt text.
-	 * @return array{ items: array, total: int }
+	 * @param string $marked         One of marked|unmarked, or empty for all.
+	 * @return array{ 0: string, 1: array } WHERE fragment (may be empty) and its placeholder args.
 	 */
-	public static function get_attachments_rest(
+	private static function build_filter_where(
 		string $search = '',
-		int $per_page = 20,
-		int $page = 1,
-		string $orderby = 'date',
-		string $order = 'DESC',
 		string $media_type = '',
 		string $reference_type = '',
 		string $usage_filter = '',
-		bool $missing_alt = false
+		bool $missing_alt = false,
+		string $marked = ''
 	): array {
 		global $wpdb;
-		$offset = ( $page - 1 ) * $per_page;
-
-		// Serve from cache when an identical query was run since the last write.
-		$cache_key = 'rest_' . md5(
-			wp_json_encode(
-				array(
-					$search,
-					$per_page,
-					$page,
-					$orderby,
-					$order,
-					$media_type,
-					$reference_type,
-					$usage_filter,
-				)
-			)
-		) . '_' . self::last_changed();
-		$cached    = wp_cache_get( $cache_key, self::CACHE_GROUP );
-		if ( is_array( $cached ) ) {
-			return $cached;
-		}
-
-		// Flat query against the denormalized summary projection: no GROUP BY,
-		// no CAST, no postmeta join. Every filter/sort column is indexed.
-		$summary = self::summary_table_name();
 
 		$where_parts = array();
 		$args        = array();
@@ -588,7 +575,90 @@ class IndexTable {
 			$where_parts[] = 's.missing_alt = 1';
 		}
 
-		$where_sql = $where_parts ? 'WHERE ' . implode( ' AND ', $where_parts ) : '';
+		if ( 'marked' === $marked ) {
+			$where_parts[] = 's.marked_for_deletion = 1';
+		} elseif ( 'unmarked' === $marked ) {
+			$where_parts[] = 's.marked_for_deletion = 0';
+		}
+
+		return array(
+			$where_parts ? 'WHERE ' . implode( ' AND ', $where_parts ) : '',
+			$args,
+		);
+	}
+
+	/**
+	 * Return paginated attachments for the REST endpoint.
+	 *
+	 * Reads the denormalized summary table: a flat indexed scan with no GROUP BY,
+	 * no CAST, and no postmeta join. media_type is an exact indexed match,
+	 * reference_type maps to boolean columns, and used/unused toggles on
+	 * usage_count.
+	 *
+	 * @param string $search         Filename substring to match.
+	 * @param int    $per_page       Results per page.
+	 * @param int    $page           1-based page number.
+	 * @param string $orderby        One of title|date|usage|file_size.
+	 * @param string $order          ASC or DESC.
+	 * @param string $media_type     One of Image|Video|Audio|Document, or empty.
+	 * @param string $reference_type One of block|featured_image|classic|postmeta, or empty.
+	 * @param string $usage_filter   One of used|unused, or empty for all.
+	 * @param bool   $missing_alt    Restrict to references embedded without alt text.
+	 * @param string $marked         One of marked|unmarked, or empty for all.
+	 * @return array{ items: array, total: int }
+	 */
+	public static function get_attachments_rest(
+		string $search = '',
+		int $per_page = 20,
+		int $page = 1,
+		string $orderby = 'date',
+		string $order = 'DESC',
+		string $media_type = '',
+		string $reference_type = '',
+		string $usage_filter = '',
+		bool $missing_alt = false,
+		string $marked = ''
+	): array {
+		global $wpdb;
+		$offset = ( $page - 1 ) * $per_page;
+
+		// Serve from cache when an identical query was run since the last write.
+		// Every argument that changes the result set must be in this key —
+		// omitting one makes two different queries collide on sites with a
+		// persistent object cache.
+		$cache_key = 'rest_' . md5(
+			wp_json_encode(
+				array(
+					$search,
+					$per_page,
+					$page,
+					$orderby,
+					$order,
+					$media_type,
+					$reference_type,
+					$usage_filter,
+					$missing_alt,
+					$marked,
+				)
+			)
+		) . '_' . self::last_changed();
+		$cached    = wp_cache_get( $cache_key, self::CACHE_GROUP );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		// Flat query against the denormalized summary projection: no GROUP BY,
+		// no CAST, no postmeta join. Every filter/sort column is indexed.
+		$summary = self::summary_table_name();
+
+		list( $where_sql, $args ) = self::build_filter_where(
+			$search,
+			$media_type,
+			$reference_type,
+			$usage_filter,
+			$missing_alt,
+			$marked
+		);
 
 		// ORDER BY from allowlist — never interpolate raw input. A secondary key
 		// on attachment_id makes pagination deterministic when the primary key
@@ -617,7 +687,8 @@ class IndexTable {
 					s.usage_count,
 					s.missing_alt AS content_alt_missing,
 					s.file_size,
-					s.alt_text
+					s.alt_text,
+					s.marked_for_deletion
 				FROM {$summary} s
 				{$where_sql}
 				ORDER BY {$order_col} {$order_dir}, s.attachment_id {$order_dir}
@@ -668,5 +739,190 @@ class IndexTable {
 		$wpdb->delete( self::summary_table_name(), array( 'attachment_id' => $attachment_id ), array( '%d' ) );
 		// phpcs:enable
 		self::flush_cache();
+	}
+
+	/**
+	 * Upper bound on how many attachments one "mark all matching" call touches.
+	 *
+	 * Marking writes one meta row per attachment, so an unbounded call on a very
+	 * large library would be a long-running request. Callers report the cap back
+	 * to the user rather than silently marking a subset.
+	 *
+	 * @var int
+	 */
+	const MARK_MATCHING_LIMIT = 5000;
+
+	/**
+	 * Mark or unmark a specific set of attachments.
+	 *
+	 * Writes the meta (the source of truth) through the meta API so object
+	 * caches stay coherent and hooks fire, then patches the summary projection
+	 * in one statement rather than rebuilding the rows.
+	 *
+	 * @param int[] $ids    Attachment IDs.
+	 * @param bool  $marked True to mark, false to clear the mark.
+	 * @return int Number of attachments whose flag was written.
+	 */
+	public static function set_marked( array $ids, bool $marked ): int {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		if ( ! $ids ) {
+			return 0;
+		}
+
+		foreach ( $ids as $id ) {
+			if ( $marked ) {
+				update_post_meta( $id, self::MARKED_META_KEY, time() );
+			} else {
+				delete_post_meta( $id, self::MARKED_META_KEY );
+			}
+		}
+
+		// Safe to inline: every element is an intval'd integer.
+		$in      = implode( ', ', $ids );
+		$summary = self::summary_table_name();
+		$value   = $marked ? 1 : 0;
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$summary} SET marked_for_deletion = %d WHERE attachment_id IN ({$in})",
+				$value
+			)
+		);
+		// phpcs:enable
+
+		self::flush_cache();
+
+		return count( $ids );
+	}
+
+	/**
+	 * Mark or unmark every attachment matching a filter set.
+	 *
+	 * Resolves the filters to IDs first rather than issuing a bare UPDATE, so
+	 * the meta writes go through the meta API and the summary stays in step.
+	 * Bounded by MARK_MATCHING_LIMIT.
+	 *
+	 * @param bool   $marked         True to mark, false to clear.
+	 * @param string $search         Filename substring to match.
+	 * @param string $media_type     One of Image|Video|Audio|Document, or empty.
+	 * @param string $reference_type One of block|featured_image|classic|postmeta, or empty.
+	 * @param string $usage_filter   One of used|unused, or empty for all.
+	 * @param bool   $missing_alt    Restrict to references embedded without alt text.
+	 * @param string $marked_filter  One of marked|unmarked, or empty for all.
+	 * @return array{ count: int, total: int, capped: bool }
+	 */
+	public static function mark_matching(
+		bool $marked,
+		string $search = '',
+		string $media_type = '',
+		string $reference_type = '',
+		string $usage_filter = '',
+		bool $missing_alt = false,
+		string $marked_filter = ''
+	): array {
+		global $wpdb;
+
+		list( $where_sql, $args ) = self::build_filter_where(
+			$search,
+			$media_type,
+			$reference_type,
+			$usage_filter,
+			$missing_alt,
+			$marked_filter
+		);
+
+		$summary = self::summary_table_name();
+
+		$total = self::count_query( "SELECT COUNT(*) FROM {$summary} s {$where_sql}", $args );
+
+		$id_args = array_merge( $args, array( self::MARK_MATCHING_LIMIT ) );
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT s.attachment_id FROM {$summary} s {$where_sql} ORDER BY s.attachment_id ASC LIMIT %d",
+				...$id_args
+			)
+		);
+		// phpcs:enable
+
+		$ids   = is_array( $ids ) ? array_map( 'intval', $ids ) : array();
+		$count = self::set_marked( $ids, $marked );
+
+		return array(
+			'count'  => $count,
+			'total'  => (int) $total,
+			'capped' => $total > self::MARK_MATCHING_LIMIT,
+		);
+	}
+
+	/**
+	 * Number of attachments currently marked for deletion.
+	 *
+	 * @return int
+	 */
+	public static function marked_count(): int {
+		$summary = self::summary_table_name();
+		return self::count_query( "SELECT COUNT(*) FROM {$summary} s WHERE s.marked_for_deletion = 1", array() );
+	}
+
+	/**
+	 * Attachment IDs currently marked for deletion.
+	 *
+	 * @param int $limit Maximum IDs to return.
+	 * @return int[]
+	 */
+	public static function get_marked_ids( int $limit ): array {
+		global $wpdb;
+		$summary = self::summary_table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT attachment_id FROM {$summary} WHERE marked_for_deletion = 1 ORDER BY attachment_id ASC LIMIT %d",
+				$limit
+			)
+		);
+		// phpcs:enable
+
+		return is_array( $ids ) ? array_map( 'intval', $ids ) : array();
+	}
+
+	/**
+	 * Usage counts for a set of attachments, keyed by attachment ID.
+	 *
+	 * One query so the delete endpoint can enforce the "unused only" rule for a
+	 * whole batch without a per-item lookup. IDs with no summary row are absent
+	 * from the result; callers must treat a miss as "usage unknown" and refuse,
+	 * never as "unused".
+	 *
+	 * @param int[] $ids Attachment IDs.
+	 * @return array<int, int>
+	 */
+	public static function usage_counts_for( array $ids ): array {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+		if ( ! $ids ) {
+			return array();
+		}
+
+		// Safe to inline: every element is an intval'd integer.
+		$in      = implode( ', ', $ids );
+		$summary = self::summary_table_name();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
+		$rows = $wpdb->get_results( "SELECT attachment_id, usage_count FROM {$summary} WHERE attachment_id IN ({$in})" );
+		// phpcs:enable
+
+		$counts = array();
+		foreach ( (array) $rows as $row ) {
+			$counts[ (int) $row->attachment_id ] = (int) $row->usage_count;
+		}
+
+		return $counts;
 	}
 }

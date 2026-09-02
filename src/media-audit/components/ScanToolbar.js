@@ -1,7 +1,9 @@
-import { Button } from '@wordpress/components';
+import { useState } from '@wordpress/element';
+import { Button, Modal } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
 export default function ScanToolbar({ status, progress, total, onScan, onClear }) {
+	const [isConfirming, setIsConfirming] = useState(false);
 	const isScanning = status === 'scanning';
 	const pct = total > 0 ? Math.round((progress / total) * 100) : 0;
 
@@ -18,7 +20,12 @@ export default function ScanToolbar({ status, progress, total, onScan, onClear }
 			<Button variant="primary" onClick={onScan} disabled={isScanning}>
 				{__('Scan Now', 'smart-media-replacement')}
 			</Button>
-			<Button variant="secondary" isDestructive onClick={onClear} disabled={isScanning}>
+			<Button
+				variant="secondary"
+				isDestructive
+				onClick={() => setIsConfirming(true)}
+				disabled={isScanning}
+			>
 				{__('Clear Index', 'smart-media-replacement')}
 			</Button>
 			{isScanning && (
@@ -35,6 +42,41 @@ export default function ScanToolbar({ status, progress, total, onScan, onClear }
 						)}
 					</span>
 				</div>
+			)}
+
+			{isConfirming && (
+				<Modal
+					title={__('Clear the media index', 'smart-media-replacement')}
+					onRequestClose={() => setIsConfirming(false)}
+					size="small"
+				>
+					<p>
+						{__(
+							'All scan data will be removed. Run a new scan to rebuild it. Your media files are not touched.',
+							'smart-media-replacement'
+						)}
+					</p>
+					<div className="smr-audit-modal-actions">
+						<Button
+							variant="tertiary"
+							onClick={() => setIsConfirming(false)}
+							__next40pxDefaultSize
+						>
+							{__('Cancel', 'smart-media-replacement')}
+						</Button>
+						<Button
+							variant="primary"
+							isDestructive
+							__next40pxDefaultSize
+							onClick={() => {
+								setIsConfirming(false);
+								onClear();
+							}}
+						>
+							{__('Clear index', 'smart-media-replacement')}
+						</Button>
+					</div>
+				</Modal>
 			)}
 		</div>
 	);

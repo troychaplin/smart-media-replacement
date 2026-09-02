@@ -31,6 +31,7 @@ class AuditIndexer {
 	 * Register hooks.
 	 */
 	public function __construct() {
+		add_action( 'init', array( $this, 'register_meta' ) );
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 		add_action( BatchRunner::CRON_HOOK, array( BatchRunner::class, 'run_batch' ) );
 		add_action( BatchRunner::BACKFILL_HOOK, array( BatchRunner::class, 'run_filesize_backfill' ) );
@@ -49,6 +50,31 @@ class AuditIndexer {
 
 		add_action( 'add_attachment', array( $this, 'on_add_attachment' ) );
 		add_action( 'delete_attachment', array( $this, 'on_delete_attachment' ) );
+	}
+
+	/**
+	 * Register the "marked for deletion" attachment meta.
+	 *
+	 * Not exposed through the core REST meta surface: the audit screen reads
+	 * the flag from the summary projection and writes it through this plugin's
+	 * own routes, which enforce the capability and usage rules. Registering it
+	 * still gives the key a declared type and an auth callback for any other
+	 * code path that touches it.
+	 */
+	public function register_meta(): void {
+		register_post_meta(
+			'attachment',
+			IndexTable::MARKED_META_KEY,
+			array(
+				'type'          => 'integer',
+				'single'        => true,
+				'show_in_rest'  => false,
+				'description'   => __( 'Unix timestamp recording when the file was marked for deletion.', 'smart-media-replacement' ),
+				'auth_callback' => static function ( $allowed, $meta_key, $post_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.Found
+					return current_user_can( 'delete_post', (int) $post_id );
+				},
+			)
+		);
 	}
 
 	/**

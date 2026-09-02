@@ -1,13 +1,19 @@
 import { useState, useMemo, useCallback } from '@wordpress/element';
 import { DataViews } from '@wordpress/dataviews';
-import { __, sprintf } from '@wordpress/i18n';
-import apiFetch from '@wordpress/api-fetch';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import { useDispatch } from '@wordpress/data';
+import { store as noticesStore } from '@wordpress/notices';
+import { trash, check, closeSmall } from '@wordpress/icons';
 import ScanToolbar from './components/ScanToolbar';
 import ThumbnailCell from './components/ThumbnailCell';
 import TitleCell from './components/TitleCell';
 import UsedInCell from './components/UsedInCell';
+import MarkedBar from './components/MarkedBar';
+import DeleteConfirmModal from './components/DeleteConfirmModal';
+import AuditNotices from './components/AuditNotices';
 import useMediaAudit from './hooks/useMediaAudit';
 import useScanProgress from './hooks/useScanProgress';
+import useMarkActions from './hooks/useMarkActions';
 import './styles.scss';
 
 const DEFAULT_VIEW = {
@@ -17,7 +23,12 @@ const DEFAULT_VIEW = {
 	page: 1,
 	perPage: 20,
 	sort: { field: 'date', direction: 'desc' },
-	fields: ['thumbnail', 'title', 'media_type', 'usage', 'file_size', 'alt_text', 'date'],
+	// `title` and `thumbnail` are deliberately absent: the layouts render the
+	// designated title/media fields as their own primary column, so listing them
+	// here as well renders each of them twice.
+	fields: ['media_type', 'usage', 'file_size', 'alt_text', 'marked_for_deletion', 'date'],
+	titleField: 'title',
+	mediaField: 'thumbnail',
 };
 
 function formatFileSize(bytes) {
@@ -35,10 +46,14 @@ function formatFileSize(bytes) {
 
 export default function App() {
 	const [view, setView] = useState(DEFAULT_VIEW);
+	const [selection, setSelection] = useState([]);
 	const [scanVersion, setScanVersion] = useState(0);
+	const [isBusy, setIsBusy] = useState(false);
 	const [indexBuilt, setIndexBuilt] = useState(() => window.smrAuditData?.indexBuilt ?? false);
 
-	const { items, totalItems, isLoading } = useMediaAudit(view, scanVersion);
+	const { createSuccessNotice, createErrorNotice } = useDispatch(noticesStore);
+
+	const { items, totalItems, markedTotal, isLoading } = useMediaAudit(view, scanVersion);
 	const { status, progress, total, startScan, resetToIdle } = useScanProgress({
 		onComplete: () => {
 			setIndexBuilt(true);
@@ -46,19 +61,41 @@ export default function App() {
 		},
 	});
 
-	const handleClear = useCallback(async () => {
-		if (
-			// eslint-disable-next-line no-alert -- Destructive action; a blocking confirm is intended.
-			!window.confirm(
-				__(
-					'Clear the media index? All scan data will be removed. Run a new scan to rebuild it.',
-					'smart-media-replacement'
-				)
-			)
-		) {
-			return;
-		}
+	const refresh = useCallback(() => setScanVersion(v => v + 1), []);
+	const { setMarked, markAllMatching, deleteItems, deleteMarked } = useMarkActions(refresh);
 
+	const notice = useCallback(
+		message => createSuccessNotice(message, { type: 'snackbar' }),
+		[createSuccessNotice]
+	);
+
+	/**
+	 * Run a queue operation with the busy flag and a single error notice.
+	 *
+	 * @param {Function} operation Async operation returning a message to show.
+	 */
+	const run = useCallback(
+		async operation => {
+			setIsBusy(true);
+			try {
+				const message = await operation();
+				if (message) {
+					notice(message);
+				}
+			} catch (error) {
+				createErrorNotice(
+					error?.message ||
+						__('The operation could not be completed.', 'smart-media-replacement'),
+					{ type: 'snackbar' }
+				);
+			} finally {
+				setIsBusy(false);
+			}
+		},
+		[notice, createErrorNotice]
+	);
+
+	const handleClear = useCallback(async () => {
 		const { ajaxUrl, nonce } = window.smrAuditData;
 		const body = new FormData();
 		body.append('action', 'smr_audit_clear_index');
@@ -71,58 +108,180 @@ export default function App() {
 		setScanVersion(v => v + 1);
 	}, [resetToIdle]);
 
-	const handleDeleteItems = useCallback(async selectedItems => {
-		const count = selectedItems.length;
-		const confirmMsg =
-			count === 1
-				? sprintf(
-						/* translators: %s: file name */
-						__('Delete "%s"? This cannot be undone.', 'smart-media-replacement'),
-						selectedItems[0].title
-					)
-				: sprintf(
-						/* translators: %d: number of files */
-						__('Delete %d files? This cannot be undone.', 'smart-media-replacement'),
-						count
-					);
+	/**
+	 * Report the outcome of a delete, including what the server refused.
+	 *
+	 * @param {Object} result Response with deleted and skipped arrays.
+	 * @return {string} Message for the snackbar.
+	 */
+	const describeDelete = useCallback(result => {
+		const deleted = result.deleted?.length || 0;
+		const inUse = (result.skipped || []).filter(entry => entry.reason === 'in_use').length;
+		const otherwiseSkipped = (result.skipped?.length || 0) - inUse;
 
-		// eslint-disable-next-line no-alert
-		if (!window.confirm(confirmMsg)) {
-			return;
+		const parts = [
+			sprintf(
+				/* translators: %d: number of files */
+				_n('%d file deleted.', '%d files deleted.', deleted, 'smart-media-replacement'),
+				deleted
+			),
+		];
+
+		if (inUse) {
+			parts.push(
+				sprintf(
+					/* translators: %d: number of files */
+					_n(
+						'%d file was skipped because it is still in use.',
+						'%d files were skipped because they are still in use.',
+						inUse,
+						'smart-media-replacement'
+					),
+					inUse
+				)
+			);
 		}
 
-		await Promise.all(
-			selectedItems.map(item =>
-				apiFetch({
-					path: `/wp/v2/media/${item.id}?force=true`,
-					method: 'DELETE',
-				})
-			)
-		);
+		if (otherwiseSkipped > 0) {
+			parts.push(
+				sprintf(
+					/* translators: %d: number of files */
+					_n(
+						'%d file could not be deleted.',
+						'%d files could not be deleted.',
+						otherwiseSkipped,
+						'smart-media-replacement'
+					),
+					otherwiseSkipped
+				)
+			);
+		}
 
-		setScanVersion(v => v + 1);
+		return parts.join(' ');
 	}, []);
 
-	const handleDeleteSingle = useCallback(async item => {
-		if (
-			// eslint-disable-next-line no-alert -- Destructive action; a blocking confirm is intended.
-			!window.confirm(
-				sprintf(
-					/* translators: %s: file name */
-					__('Delete "%s"? This cannot be undone.', 'smart-media-replacement'),
-					item.title
-				)
-			)
-		) {
-			return;
-		}
+	const handleDelete = useCallback(
+		items_ =>
+			run(async () => {
+				const result = await deleteItems(items_);
+				setSelection([]);
+				return describeDelete(result);
+			}),
+		[run, deleteItems, describeDelete]
+	);
 
-		await apiFetch({
-			path: `/wp/v2/media/${item.id}?force=true`,
-			method: 'DELETE',
+	const handleMark = useCallback(
+		(items_, marked) =>
+			run(async () => {
+				const result = await setMarked(items_, marked);
+				setSelection([]);
+				return marked
+					? sprintf(
+							/* translators: %d: number of files */
+							_n(
+								'%d file marked for deletion.',
+								'%d files marked for deletion.',
+								result.count,
+								'smart-media-replacement'
+							),
+							result.count
+						)
+					: sprintf(
+							/* translators: %d: number of files */
+							_n(
+								'%d file unmarked.',
+								'%d files unmarked.',
+								result.count,
+								'smart-media-replacement'
+							),
+							result.count
+						);
+			}),
+		[run, setMarked]
+	);
+
+	const handleMarkMatching = useCallback(
+		() =>
+			run(async () => {
+				const result = await markAllMatching(view, true);
+				if (result.capped) {
+					return sprintf(
+						/* translators: 1: number marked, 2: total matching */
+						__(
+							'%1$d of %2$d matching files marked. Narrow the filters and repeat to mark the rest.',
+							'smart-media-replacement'
+						),
+						result.count,
+						result.total
+					);
+				}
+				return sprintf(
+					/* translators: %d: number of files */
+					_n(
+						'%d file marked for deletion.',
+						'%d files marked for deletion.',
+						result.count,
+						'smart-media-replacement'
+					),
+					result.count
+				);
+			}),
+		[run, markAllMatching, view]
+	);
+
+	const handleClearMarks = useCallback(
+		() =>
+			run(async () => {
+				// Scope to the marked rows rather than the whole library: an
+				// unfiltered unmark would walk every attachment to clear a flag
+				// that only a handful of them have.
+				const result = await markAllMatching(
+					{
+						...view,
+						search: '',
+						filters: [{ field: 'marked', operator: 'is', value: 'marked' }],
+					},
+					false
+				);
+				return sprintf(
+					/* translators: %d: number of files */
+					_n(
+						'%d mark cleared.',
+						'%d marks cleared.',
+						result.count,
+						'smart-media-replacement'
+					),
+					result.count
+				);
+			}),
+		[run, markAllMatching, view]
+	);
+
+	const handleDeleteMarked = useCallback(
+		() =>
+			run(async () => {
+				const result = await deleteMarked();
+				setSelection([]);
+				return describeDelete(result);
+			}),
+		[run, deleteMarked, describeDelete]
+	);
+
+	/** Toggle the list between the review queue and everything. */
+	const handleReview = useCallback(() => {
+		setView(current => {
+			const isReviewing = current.filters?.some(f => f.field === 'marked');
+			return {
+				...current,
+				page: 1,
+				filters: isReviewing
+					? current.filters.filter(f => f.field !== 'marked')
+					: [
+							...(current.filters || []),
+							{ field: 'marked', operator: 'is', value: 'marked' },
+						],
+			};
 		});
-
-		setScanVersion(v => v + 1);
 	}, []);
 
 	const fields = useMemo(
@@ -130,23 +289,34 @@ export default function App() {
 			{
 				id: 'thumbnail',
 				label: __('Preview', 'smart-media-replacement'),
+				type: 'media',
 				enableSorting: false,
 				enableHiding: false,
 				enableGlobalSearch: false,
+				filterBy: false,
 				render: ({ item }) => <ThumbnailCell item={item} />,
 			},
 			{
 				id: 'title',
 				label: __('File Name', 'smart-media-replacement'),
+				type: 'text',
 				enableSorting: true,
 				enableHiding: false,
 				enableGlobalSearch: true,
-				render: ({ item }) => <TitleCell item={item} onDelete={handleDeleteSingle} />,
+				// Filtering is server-side and the endpoint accepts no title
+				// filter, so keep this out of the "Add filter" menu that the
+				// text field type would otherwise put it in.
+				filterBy: false,
+				render: ({ item }) => <TitleCell item={item} />,
 			},
 			{
 				id: 'reference_type',
 				label: __('Location', 'smart-media-replacement'),
 				enableSorting: false,
+				// Filter-only: no render and no matching property on the item,
+				// so it must never be toggled on as a column.
+				enableHiding: false,
+				enableGlobalSearch: false,
 				elements: [
 					{ value: 'block', label: __('Block', 'smart-media-replacement') },
 					{
@@ -173,21 +343,36 @@ export default function App() {
 			{
 				id: 'usage',
 				label: __('Used In', 'smart-media-replacement'),
+				type: 'integer',
 				enableSorting: true,
+				enableGlobalSearch: false,
+				// The used/unused choice is a separate filter-only field: this
+				// column's value is a count, and mixing the two on one field
+				// makes getValue disagree with the filter's elements.
+				filterBy: false,
+				getValue: ({ item }) => item.usage_count,
+				render: ({ item }) => <UsedInCell item={item} indexBuilt={indexBuilt} />,
+			},
+			{
+				// Filter-only companion to the "Used In" column.
+				id: 'usage_filter',
+				label: __('Usage', 'smart-media-replacement'),
+				enableSorting: false,
+				enableHiding: false,
 				enableGlobalSearch: false,
 				elements: [
 					{ value: 'used', label: __('Used', 'smart-media-replacement') },
 					{ value: 'unused', label: __('Unused', 'smart-media-replacement') },
 				],
 				filterBy: { isPrimary: true, operators: ['is'] },
-				getValue: ({ item }) => item.usage_count,
-				render: ({ item }) => <UsedInCell item={item} indexBuilt={indexBuilt} />,
 			},
 			{
 				id: 'file_size',
 				label: __('Size', 'smart-media-replacement'),
+				type: 'integer',
 				enableSorting: true,
 				enableGlobalSearch: false,
+				filterBy: false,
 				getValue: ({ item }) => item.file_size,
 				render: ({ item }) => formatFileSize(item.file_size),
 			},
@@ -197,6 +382,7 @@ export default function App() {
 				enableSorting: false,
 				enableHiding: false,
 				enableGlobalSearch: false,
+				filterBy: false,
 				render: ({ item }) => {
 					if (item.media_type !== 'Image' || !item.content_alt_missing) {
 						return null;
@@ -209,9 +395,34 @@ export default function App() {
 				},
 			},
 			{
-				// Filter-only field: no column, no render. Label starts with "W" so
-				// DataViews' alphabetical sort puts it after "Used In" (U), giving
-				// the chip order: Location → Type → Used In → Without Alt.
+				id: 'marked_for_deletion',
+				label: __('Queued', 'smart-media-replacement'),
+				enableSorting: false,
+				enableGlobalSearch: false,
+				filterBy: false,
+				render: ({ item }) =>
+					item.marked_for_deletion ? (
+						<span className="smr-audit-marked-badge">
+							{__('Marked', 'smart-media-replacement')}
+						</span>
+					) : null,
+			},
+			{
+				// Filter-only field: no column, no render. Labels drive the chip
+				// order (DataViews sorts primary filters alphabetically), so the
+				// four chips read: Location → Marked → Type → Usage → Without Alt.
+				id: 'marked',
+				label: __('Marked', 'smart-media-replacement'),
+				enableSorting: false,
+				enableHiding: false,
+				enableGlobalSearch: false,
+				elements: [
+					{ value: 'marked', label: __('Marked', 'smart-media-replacement') },
+					{ value: 'unmarked', label: __('Not marked', 'smart-media-replacement') },
+				],
+				filterBy: { isPrimary: true, operators: ['is'] },
+			},
+			{
 				id: 'missing_alt',
 				label: __('Without Alt', 'smart-media-replacement'),
 				enableSorting: false,
@@ -223,8 +434,10 @@ export default function App() {
 			{
 				id: 'date',
 				label: __('Date', 'smart-media-replacement'),
+				type: 'datetime',
 				enableSorting: true,
 				enableGlobalSearch: false,
+				filterBy: false,
 				getValue: ({ item }) => item.date,
 				render: ({ item }) =>
 					new Date(item.date).toLocaleDateString(undefined, {
@@ -234,29 +447,98 @@ export default function App() {
 					}),
 			},
 		],
-		[handleDeleteSingle, indexBuilt]
+		[indexBuilt]
 	);
 
 	const actions = useMemo(
 		() => [
 			{
+				id: 'mark',
+				label: __('Mark for deletion', 'smart-media-replacement'),
+				icon: check,
+				supportsBulk: true,
+				isEligible: item => !item.marked_for_deletion,
+				// This DataViews version hands a bulk callback every selected
+				// item that any bulk action accepts, not just the ones eligible
+				// for this action, so re-apply the rule here.
+				callback: items_ =>
+					handleMark(
+						items_.filter(item => !item.marked_for_deletion),
+						true
+					),
+			},
+			{
+				id: 'unmark',
+				label: __('Remove mark', 'smart-media-replacement'),
+				icon: closeSmall,
+				supportsBulk: true,
+				isEligible: item => !!item.marked_for_deletion,
+				callback: items_ =>
+					handleMark(
+						items_.filter(item => item.marked_for_deletion),
+						false
+					),
+			},
+			{
 				id: 'delete',
-				label: __('Delete', 'smart-media-replacement'),
-				isDestructive: true,
+				label: __('Delete permanently', 'smart-media-replacement'),
+				icon: trash,
+				supportsBulk: true,
 				isEligible: item => item.usage_count === 0,
-				callback: handleDeleteItems,
+				modalHeader: __('Delete permanently', 'smart-media-replacement'),
+				modalFocusOnMount: 'firstContentElement',
+				RenderModal: ({ items: modalItems, closeModal, onActionPerformed }) => (
+					<DeleteConfirmModal
+						items={modalItems.filter(item => item.usage_count === 0)}
+						closeModal={closeModal}
+						onActionPerformed={onActionPerformed}
+						onDelete={handleDelete}
+					/>
+				),
 			},
 		],
-		[handleDeleteItems]
+		[handleMark, handleDelete]
 	);
 
-	const paginationInfo = {
-		totalItems,
-		totalPages: Math.ceil(totalItems / view.perPage),
-	};
+	const paginationInfo = useMemo(
+		() => ({
+			totalItems,
+			totalPages: Math.ceil(totalItems / view.perPage),
+		}),
+		[totalItems, view.perPage]
+	);
+
+	const isFiltered = !!(view.search || view.filters?.length);
+	const isReviewing = !!view.filters?.some(f => f.field === 'marked');
+
+	const empty = useMemo(() => {
+		if (!indexBuilt) {
+			return (
+				<p>
+					{__(
+						'The media index has not been built yet. Run a scan to see which files are in use.',
+						'smart-media-replacement'
+					)}
+				</p>
+			);
+		}
+		return (
+			<p>
+				{isFiltered
+					? __('No files match these filters.', 'smart-media-replacement')
+					: __('No media found.', 'smart-media-replacement')}
+			</p>
+		);
+	}, [indexBuilt, isFiltered]);
 
 	return (
 		<div className="smr-audit-app">
+			{/*
+			 * Deliberately outside DataViews rather than in its `header` slot:
+			 * that slot is a flex-shrink:0 area beside the view-config button,
+			 * which the scan progress bar cannot share without being squashed.
+			 * Scanning is a page-level operation, not a list control.
+			 */}
 			<ScanToolbar
 				status={status}
 				progress={progress}
@@ -264,16 +546,34 @@ export default function App() {
 				onScan={startScan}
 				onClear={handleClear}
 			/>
+			<MarkedBar
+				markedTotal={markedTotal}
+				matchCount={totalItems}
+				isFiltered={isFiltered}
+				isReviewing={isReviewing}
+				isBusy={isBusy}
+				onReview={handleReview}
+				onMarkMatching={handleMarkMatching}
+				onClearMarks={handleClearMarks}
+				onDeleteMarked={handleDeleteMarked}
+			/>
 			<DataViews
 				data={items}
 				fields={fields}
 				view={view}
 				onChangeView={setView}
+				getItemId={item => String(item.id)}
+				selection={selection}
+				onChangeSelection={setSelection}
 				paginationInfo={paginationInfo}
 				actions={actions}
-				defaultLayouts={{ table: {}, list: {} }}
+				defaultLayouts={{ table: {}, grid: {} }}
 				isLoading={isLoading}
+				searchLabel={__('Search media by file name', 'smart-media-replacement')}
+				empty={empty}
+				onReset={isFiltered ? () => setView(DEFAULT_VIEW) : false}
 			/>
+			<AuditNotices />
 		</div>
 	);
 }

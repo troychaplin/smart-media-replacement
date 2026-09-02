@@ -49,8 +49,9 @@ function smart_media_replacement_uninstall_site(): void {
 	delete_transient( BatchRunner::PHASE_KEY );
 	delete_transient( BatchRunner::ATTACHMENT_IDS_KEY );
 
-	// One row per attachment, so this has to go or it orphans on every site.
+	// One row per attachment, so these have to go or they orphan on every site.
 	delete_post_meta_by_key( BatchRunner::FILESIZE_META_KEY );
+	delete_post_meta_by_key( IndexTable::MARKED_META_KEY );
 
 	wp_clear_scheduled_hook( BatchRunner::CRON_HOOK );
 	wp_clear_scheduled_hook( BatchRunner::BACKFILL_HOOK );

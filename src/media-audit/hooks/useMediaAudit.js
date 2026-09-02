@@ -1,8 +1,28 @@
 import { useState, useEffect, useRef } from '@wordpress/element';
+import apiFetch from '@wordpress/api-fetch';
+
+/** REST route backing the audit list. */
+const AUDIT_ROUTE = '/smart-media-replacement/v1/audit-media';
+
+/**
+ * DataViews filter field -> REST query parameter.
+ *
+ * Declarative so a new filter is one line here plus one field in App.js, rather
+ * than another hand-written lookup. Any field absent from this map is ignored:
+ * filtering happens server-side, so a filter the endpoint does not accept must
+ * not silently appear to work.
+ */
+const FILTER_PARAMS = {
+	media_type: 'media_type',
+	reference_type: 'reference_type',
+	usage_filter: 'usage_filter',
+	marked: 'marked',
+};
 
 export default function useMediaAudit(view, scanVersion) {
 	const [items, setItems] = useState([]);
 	const [totalItems, setTotalItems] = useState(0);
+	const [markedTotal, setMarkedTotal] = useState(0);
 	const [isLoading, setIsLoading] = useState(true);
 	const abortRef = useRef(null);
 	const cacheRef = useRef(new Map());
@@ -13,8 +33,8 @@ export default function useMediaAudit(view, scanVersion) {
 			abortRef.current.abort();
 		}
 
-		// A scan/clear/delete bumps scanVersion and makes the index stale, so
-		// drop the whole client cache rather than letting old entries linger.
+		// A scan/clear/delete/mark bumps scanVersion and makes the index stale,
+		// so drop the whole client cache rather than letting old entries linger.
 		if (cacheVersionRef.current !== scanVersion) {
 			cacheRef.current.clear();
 			cacheVersionRef.current = scanVersion;
@@ -33,33 +53,35 @@ export default function useMediaAudit(view, scanVersion) {
 			params.set('order', view.sort.direction === 'asc' ? 'ASC' : 'DESC');
 		}
 
-		const mediaTypeFilter = view.filters?.find(f => f.field === 'media_type');
-		if (mediaTypeFilter?.value) {
-			params.set('media_type', mediaTypeFilter.value);
-		}
+		// Only the "is" operator is supported: the endpoint takes one scalar per
+		// filter, so a multi-value operator would silently match on its first
+		// value alone.
+		(view.filters || []).forEach(filter => {
+			if (filter.operator !== 'is' || !filter.value) {
+				return;
+			}
 
-		const refTypeFilter = view.filters?.find(f => f.field === 'reference_type');
-		if (refTypeFilter?.value) {
-			params.set('reference_type', refTypeFilter.value);
-		}
+			if (filter.field === 'missing_alt') {
+				if (filter.value === 'missing') {
+					params.set('missing_alt', '1');
+				}
+				return;
+			}
 
-		const usageFilter = view.filters?.find(f => f.field === 'usage');
-		if (usageFilter?.value) {
-			params.set('usage_filter', usageFilter.value);
-		}
-
-		const altFilter = view.filters?.find(f => f.field === 'missing_alt');
-		if (altFilter?.value === 'missing') {
-			params.set('missing_alt', '1');
-		}
+			const param = FILTER_PARAMS[filter.field];
+			if (param) {
+				params.set(param, filter.value);
+			}
+		});
 
 		// Serve an identical prior view from cache. scanVersion is part of the
-		// key, so a scan/clear/delete (which bumps it) invalidates every entry.
+		// key, so a scan/clear/delete/mark (which bumps it) invalidates every entry.
 		const cacheKey = `${scanVersion}|${params.toString()}`;
 		const cached = cacheRef.current.get(cacheKey);
 		if (cached) {
 			setItems(cached.items);
 			setTotalItems(cached.total);
+			setMarkedTotal(cached.markedTotal);
 			setIsLoading(false);
 			return;
 		}
@@ -67,20 +89,32 @@ export default function useMediaAudit(view, scanVersion) {
 		abortRef.current = new AbortController();
 		setIsLoading(true);
 
-		fetch(`${window.smrAuditData.restUrl}?${params.toString()}`, {
-			headers: { 'X-WP-Nonce': window.smrAuditData.restNonce },
+		// apiFetch rather than a hand-built URL: on a site with plain permalinks
+		// the REST root is `/index.php?rest_route=...`, which already carries a
+		// query string, so concatenating `?` + params produced a second `?` and a
+		// 404. apiFetch's root-URL middleware rewrites the separator for us, and
+		// carries the nonce registered in index.js.
+		apiFetch({
+			path: `${AUDIT_ROUTE}?${params.toString()}`,
 			signal: abortRef.current.signal,
 		})
-			.then(r => r.json())
 			.then(data => {
 				const nextItems = data.items || [];
 				const total = data.total || 0;
-				cacheRef.current.set(cacheKey, { items: nextItems, total });
+				const marked = data.marked_total || 0;
+				cacheRef.current.set(cacheKey, {
+					items: nextItems,
+					total,
+					markedTotal: marked,
+				});
 				setItems(nextItems);
 				setTotalItems(total);
+				setMarkedTotal(marked);
 			})
 			.catch(err => {
-				if (err.name !== 'AbortError') {
+				// An aborted request is the expected outcome of a rapid filter
+				// change, not an error worth reporting.
+				if (err?.name !== 'AbortError' && err?.code !== 'fetch_error') {
 					// eslint-disable-next-line no-console
 					console.error('WP Media Audit fetch error:', err);
 				}
@@ -88,5 +122,5 @@ export default function useMediaAudit(view, scanVersion) {
 			.finally(() => setIsLoading(false));
 	}, [view, scanVersion]);
 
-	return { items, totalItems, isLoading };
+	return { items, totalItems, markedTotal, isLoading };
 }
