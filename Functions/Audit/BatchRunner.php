@@ -519,9 +519,13 @@ class BatchRunner {
 					$file_size = (int) filesize( $path );
 				}
 			}
-			if ( $file_size > 0 ) {
-				update_post_meta( $id, self::FILESIZE_META_KEY, $file_size );
-			}
+			// Always record a result. 0 means the size could not be resolved
+			// (file offloaded to cloud storage, deleted from disk, or an older
+			// upload with no filesize in its metadata). Skipping the write would
+			// leave the attachment in the "missing filesize" set forever, and
+			// the filesize phase — which loops until that set is empty — would
+			// never advance, leaving the scan stuck at 100%.
+			update_post_meta( $id, self::FILESIZE_META_KEY, max( 0, $file_size ) );
 		}
 	}
 

@@ -259,6 +259,8 @@ Yes — you need the `edit_post` capability for the specific attachment. This ma
 
 **Multisite fix.** Turning off "Enable Media Audit" or "Enable Revisions" from the Network Admin settings page now sticks. Previously the first "off" save was dropped on networks that had updated the plugin in place.
 
+**Audit scan fix.** The Media Audit scan no longer gets stuck at 100%. A scan could stall forever if the library held an attachment whose file size could not be read — for example media offloaded to cloud storage or files missing from disk.
+
 = What's new in 1.2.0 =
 
 Multisite behavior is now consistent and centrally managed.
