@@ -257,6 +257,8 @@ Yes — you need the `edit_post` capability for the specific attachment. This ma
 
 **Also changed:** "Delete database on deactivation" now covers the audit tables as well as the revisions table. Deleting the plugin now removes all plugin data including stored revision files — see the Uninstalling section above. Media Library scripts are now cache-busted per release rather than pinned to a fixed version.
 
+**Multisite fix.** Turning off "Enable Media Audit" or "Enable Revisions" from the Network Admin settings page now sticks. Previously the first "off" save was dropped on networks that had updated the plugin in place.
+
 = What's new in 1.2.0 =
 
 Multisite behavior is now consistent and centrally managed.

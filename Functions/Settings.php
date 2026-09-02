@@ -73,9 +73,38 @@ class Settings {
 	 */
 	public static function update( string $key, $value ): bool {
 		if ( is_multisite() ) {
+			/*
+			 * update_site_option() delegates to core's update_network_option(),
+			 * which reads its "old value" with a literal false default. When the
+			 * row does not exist yet and $value is itself false (an unchecked
+			 * checkbox), core's `$value === $old_value` guard fires and the
+			 * write is dropped before the add_network_option() branch runs — so
+			 * the first attempt to turn a default-on setting off never persists.
+			 * Single-site update_option() sidesteps this via the typed default
+			 * register_setting() installs; network options have no such API, so
+			 * create the row explicitly here.
+			 */
+			if ( ! self::site_option_exists( $key ) ) {
+				return add_site_option( $key, $value );
+			}
 			return update_site_option( $key, $value );
 		}
 		return update_option( $key, $value );
+	}
+
+	/**
+	 * Whether a network option row currently exists.
+	 *
+	 * There is no get_site_option() return that distinguishes "missing" from a
+	 * stored falsy value, so probe with a fresh object as the default: only a
+	 * genuinely absent option comes back as that exact instance.
+	 *
+	 * @param string $key Option key.
+	 * @return bool
+	 */
+	private static function site_option_exists( string $key ): bool {
+		$sentinel = new \stdClass();
+		return get_site_option( $key, $sentinel ) !== $sentinel;
 	}
 
 	/**
